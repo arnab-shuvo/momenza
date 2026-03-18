@@ -1,8 +1,9 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
-import { Spacing, Radius, Typography } from '../theme';
+import { Spacing, Typography } from '../theme';
 
 type ViewMode = 'list' | 'calendar';
 
@@ -11,6 +12,10 @@ interface HeaderProps {
   viewMode: ViewMode;
   onToggleView: () => void;
   onMenuPress: () => void;
+  onScanQR: () => void;
+  projectName?: string;
+  projectColor?: string;
+  onBack?: () => void;
 }
 
 export default function Header({
@@ -18,15 +23,26 @@ export default function Header({
   viewMode,
   onToggleView,
   onMenuPress,
+  onScanQR,
+  projectName,
+  projectColor,
+  onBack,
 }: HeaderProps) {
   const { colors } = useTheme();
 
-  const label =
-    activeCount === 0
-      ? 'All done! Great work 🎉'
-      : activeCount === 1
-        ? '1 task remaining'
-        : `${activeCount} tasks remaining`;
+  const isInsideProject = !!projectName;
+
+  const label = isInsideProject
+    ? (activeCount === 0
+        ? 'All done! Great work 🎉'
+        : activeCount === 1
+          ? '1 task remaining'
+          : `${activeCount} tasks remaining`)
+    : (activeCount === 0
+        ? 'All done! Great work 🎉'
+        : activeCount === 1
+          ? '1 task remaining'
+          : `${activeCount} tasks remaining`);
 
   return (
     <View
@@ -35,88 +51,79 @@ export default function Header({
         { backgroundColor: colors.surface, borderBottomColor: colors.border },
       ]}
     >
-      <View style={styles.top}>
-        {/* Gradient accent bar */}
-        <LinearGradient
-          colors={['#A78BFA', '#5B5FED']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.accent}
-        />
-
-        {/* Right controls: toggle + burger */}
-        <View style={styles.rightControls}>
-          {/* View toggle pill */}
-          <View
-            style={[
-              styles.togglePill,
-              {
-                backgroundColor: colors.background,
-                borderColor: colors.border,
-              },
-            ]}
+      {/* Controls row — always full width */}
+      <View style={styles.row}>
+        {isInsideProject && onBack ? (
+          <TouchableOpacity
+            onPress={onBack}
+            style={[styles.circleBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+            activeOpacity={0.7}
           >
+            <Feather name="arrow-left" size={20} color={colors.textPrimary} />
+          </TouchableOpacity>
+        ) : (
+          /* Home: show app title on the left */
+          <View style={styles.homeTitleArea}>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Momenza</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>{label}</Text>
+          </View>
+        )}
+
+        <View style={styles.spacer} />
+
+        <View style={styles.rightControls}>
+          <View style={[styles.togglePill, { backgroundColor: colors.background, borderColor: colors.border }]}>
             <ToggleSegment active={viewMode === 'list'} onPress={onToggleView}>
-              <ListIcon
-                color={viewMode === 'list' ? '#fff' : colors.textSecondary}
-              />
+              <ListIcon color={viewMode === 'list' ? '#fff' : colors.textSecondary} />
             </ToggleSegment>
-
-            <View
-              style={[styles.toggleDivider, { backgroundColor: colors.border }]}
-            />
-
-            <ToggleSegment
-              active={viewMode === 'calendar'}
-              onPress={onToggleView}
-            >
-              <CalendarIcon
-                color={viewMode === 'calendar' ? '#fff' : colors.textSecondary}
-              />
+            <View style={[styles.toggleDivider, { backgroundColor: colors.border }]} />
+            <ToggleSegment active={viewMode === 'calendar'} onPress={onToggleView}>
+              <CalendarIcon color={viewMode === 'calendar' ? '#fff' : colors.textSecondary} />
             </ToggleSegment>
           </View>
 
-          {/* Burger menu button */}
           <TouchableOpacity
-            style={[
-              styles.menuBtn,
-              {
-                backgroundColor: colors.background,
-                borderColor: colors.border,
-              },
-            ]}
+            style={[styles.circleBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+            onPress={onScanQR}
+            activeOpacity={0.7}
+          >
+            <Feather name="maximize" size={20} color={colors.textPrimary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.circleBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
             onPress={onMenuPress}
             activeOpacity={0.7}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <View style={styles.burgerLines}>
-              <View
-                style={[styles.line, { backgroundColor: colors.textPrimary }]}
-              />
-              <View
-                style={[
-                  styles.line,
-                  styles.lineMid,
-                  { backgroundColor: colors.textPrimary },
-                ]}
-              />
-              <View
-                style={[styles.line, { backgroundColor: colors.textPrimary }]}
-              />
+              <View style={[styles.line, { backgroundColor: colors.textPrimary }]} />
+              <View style={[styles.line, styles.lineMid, { backgroundColor: colors.textPrimary }]} />
+              <View style={[styles.line, { backgroundColor: colors.textPrimary }]} />
             </View>
           </TouchableOpacity>
         </View>
       </View>
 
-      <Text style={[styles.title, { color: colors.textPrimary }]}>Momenza</Text>
-      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-        {label}
-      </Text>
+      {/* Project info — only when inside a project */}
+      {isInsideProject && (
+        <View style={styles.projectInfo}>
+          <View style={styles.projectNameRow}>
+            {projectColor && (
+              <View style={[styles.projectColorDot, { backgroundColor: projectColor }]} />
+            )}
+            <Text style={[styles.projectTitle, { color: colors.textPrimary }]}>
+              {projectName}
+            </Text>
+          </View>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            {label}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
 
-// ─── ToggleSegment ────────────────────────────────────────────────────────────
 function ToggleSegment({
   active,
   onPress,
@@ -124,7 +131,6 @@ function ToggleSegment({
 }: {
   active: boolean;
   onPress: () => void;
-  colors?: any;
   children: React.ReactNode;
 }) {
   if (active) {
@@ -156,34 +162,12 @@ function ToggleSegment({
   );
 }
 
-// ─── Icons (drawn with Views for consistency with the burger lines) ────────────
 function ListIcon({ color }: { color: string }) {
   return (
     <View style={{ gap: 3.5, alignItems: 'flex-start' }}>
-      <View
-        style={{
-          width: 16,
-          height: 2,
-          borderRadius: 1,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          width: 11,
-          height: 2,
-          borderRadius: 1,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          width: 16,
-          height: 2,
-          borderRadius: 1,
-          backgroundColor: color,
-        }}
-      />
+      <View style={{ width: 16, height: 2, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ width: 11, height: 2, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ width: 16, height: 2, borderRadius: 1, backgroundColor: color }} />
     </View>
   );
 }
@@ -200,34 +184,16 @@ function CalendarIcon({ color }: { color: string }) {
         overflow: 'hidden',
       }}
     >
-      {/* Header bar */}
       <View style={{ height: 5, backgroundColor: color }} />
-      {/* Grid rows */}
       <View style={{ flex: 1, padding: 2, gap: 1.5 }}>
         <View style={{ flexDirection: 'row', gap: 1.5, flex: 1 }}>
           {[0, 1, 2].map((i) => (
-            <View
-              key={i}
-              style={{
-                flex: 1,
-                backgroundColor: color,
-                borderRadius: 0.5,
-                opacity: 0.75,
-              }}
-            />
+            <View key={i} style={{ flex: 1, backgroundColor: color, borderRadius: 0.5, opacity: 0.75 }} />
           ))}
         </View>
         <View style={{ flexDirection: 'row', gap: 1.5, flex: 1 }}>
           {[0, 1, 2].map((i) => (
-            <View
-              key={i}
-              style={{
-                flex: 1,
-                backgroundColor: color,
-                borderRadius: 0.5,
-                opacity: 0.75,
-              }}
-            />
+            <View key={i} style={{ flex: 1, backgroundColor: color, borderRadius: 0.5, opacity: 0.75 }} />
           ))}
         </View>
       </View>
@@ -235,33 +201,52 @@ function CalendarIcon({ color }: { color: string }) {
   );
 }
 
-// ─── styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
-    paddingTop: Spacing.xl,
-    paddingBottom: Spacing.lg,
+    paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
     borderBottomWidth: 1,
   },
-  top: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
   },
-  accent: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
+  titleArea: {
+    flex: 1,
+    paddingHorizontal: Spacing.sm,
+    justifyContent: 'center',
+  },
+  homeTitleArea: {
+    justifyContent: 'center',
+  },
+  spacer: { flex: 1 },
+  projectInfo: {
+    marginTop: Spacing.sm,
+    gap: 2,
+  },
+  projectNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    flexWrap: 'wrap',
+  },
+  projectTitle: {
+    ...Typography.h1,
+    flexShrink: 1,
+  },
+  projectColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    flexShrink: 0,
   },
   rightControls: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    marginTop: 20,
+    flexShrink: 0,
   },
 
-  // Toggle pill
   togglePill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -287,8 +272,7 @@ const styles = StyleSheet.create({
     height: 26,
   },
 
-  // Burger button
-  menuBtn: {
+  circleBtn: {
     width: 50,
     height: 50,
     borderRadius: 25,
@@ -311,7 +295,6 @@ const styles = StyleSheet.create({
 
   title: {
     ...Typography.h1,
-    marginBottom: Spacing.xs,
   },
   subtitle: {
     ...Typography.caption,

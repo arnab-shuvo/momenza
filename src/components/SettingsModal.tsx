@@ -60,7 +60,7 @@ export default function SettingsModal({
         </View>
 
         <View style={styles.footer}>
-          <Text style={[styles.footerText, { color: colors.textSecondary }]}>TaskManager • v1.0.0</Text>
+          <Text style={[styles.footerText, { color: colors.textSecondary }]}>Momenza • v1.0.0</Text>
         </View>
       </SafeAreaView>
     </Modal>

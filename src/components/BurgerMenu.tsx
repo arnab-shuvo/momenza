@@ -1,18 +1,20 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View,
   Text,
+  Image,
   TouchableOpacity,
   StyleSheet,
   Modal,
   Pressable,
   Animated,
-  Switch,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../context/ThemeContext';
-import { Spacing, Radius, Shadow } from '../theme';
+import { Spacing, Radius, Shadow, Typography } from '../theme';
+import { Project } from '../types/project';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const DRAWER_W = Math.min(300, SCREEN_W * 0.78);
@@ -20,21 +22,29 @@ const DRAWER_W = Math.min(300, SCREEN_W * 0.78);
 interface BurgerMenuProps {
   visible: boolean;
   archivedCount: number;
+  projects: Project[];
   onClose: () => void;
   onArchive: () => void;
+  onSettings: () => void;
+
+  onSelectProject: (project: Project) => void;
+  onNewProject: () => void;
 }
 
 export default function BurgerMenu({
   visible,
   archivedCount,
+  projects,
   onClose,
   onArchive,
+  onSettings,
+
+  onSelectProject,
+  onNewProject,
 }: BurgerMenuProps) {
-  const { colors, isDark, toggleTheme } = useTheme();
+  const { colors } = useTheme();
   const translateX = useRef(new Animated.Value(-DRAWER_W)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
@@ -65,30 +75,12 @@ export default function BurgerMenu({
           useNativeDriver: true,
         }),
       ]).start();
-      setSettingsOpen(false);
-      settingsAnim.setValue(0);
     }
   }, [visible]);
 
-  function toggleSettings() {
-    const open = !settingsOpen;
-    setSettingsOpen(open);
-    Animated.spring(settingsAnim, {
-      toValue: open ? 1 : 0,
-      useNativeDriver: false,
-      bounciness: 2,
-      speed: 16,
-    }).start();
-  }
-
-  const settingsMaxH = settingsAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 80],
-  });
-
   function nav(action: () => void) {
+    action();
     onClose();
-    setTimeout(action, 260);
   }
 
   return (
@@ -109,102 +101,96 @@ export default function BurgerMenu({
           Shadow.md,
         ]}
       >
-        {/* Branding */}
         <LinearGradient
           colors={['#A78BFA', '#7B6FFF', '#5B5FED']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.brand}
+          style={[
+            styles.brand,
+            {
+              paddingTop: Spacing.md,
+              paddingBottom: Spacing.md,
+              borderBottomColor: 'rgba(255,255,255,0.15)',
+            },
+          ]}
         >
           <View style={styles.brandIconWrap}>
-            <Text style={styles.brandCheckmark}>✓</Text>
+            <Image
+              source={require('../../assets/icon.png')}
+              style={styles.brandIcon}
+              resizeMode='contain'
+            />
           </View>
           <View>
-            <Text style={styles.brandName}>Momenza</Text>
-            <Text style={styles.brandTagline}>Organize your day</Text>
+            <Text style={[styles.brandName, { color: '#fff' }]}>Momenza</Text>
+            <Text style={[styles.brandTagline, { color: 'rgba(255,255,255,0.75)' }]}>
+              Organize your day
+            </Text>
           </View>
         </LinearGradient>
 
-        {/* Nav items */}
-        <View style={styles.nav}>
-          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
-            NAVIGATION
-          </Text>
-
-          {/* Settings — expands inline */}
-          <TouchableOpacity
-            onPress={toggleSettings}
-            activeOpacity={0.7}
-            style={[
-              styles.navItem,
-              settingsOpen && { backgroundColor: colors.primaryLight },
-            ]}
-          >
-            <View style={[styles.navIcon, { backgroundColor: '#F59E0B22' }]}>
-              <Text style={styles.navEmoji}>⚙️</Text>
-            </View>
-            <Text style={[styles.navLabel, { color: colors.textPrimary }]}>
-              Settings
-            </Text>
-            <Animated.Text
-              style={[
-                styles.chevron,
-                { color: colors.textSecondary },
-                {
-                  transform: [
-                    {
-                      rotate: settingsAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ['0deg', '90deg'],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            >
-              ›
-            </Animated.Text>
-          </TouchableOpacity>
-
-          <Animated.View
-            style={{ maxHeight: settingsMaxH, overflow: 'hidden' }}
-          >
-            <View
-              style={[
-                styles.settingsPanel,
-                {
-                  backgroundColor: colors.background,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.settingsPanelLabel,
-                  { color: colors.textSecondary },
-                ]}
-              >
-                {isDark ? '🌙  Dark mode' : '☀️  Light mode'}
+        <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+          {/* Projects section */}
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+                PROJECTS
               </Text>
-              <Switch
-                value={isDark}
-                onValueChange={toggleTheme}
-                trackColor={{ false: '#E8EAF0', true: colors.primary }}
-                thumbColor={isDark ? colors.primaryDark : '#FFFFFF'}
-                ios_backgroundColor='#E8EAF0'
-              />
+              <TouchableOpacity
+                onPress={() => nav(onNewProject)}
+                activeOpacity={0.7}
+                style={[styles.newProjectBtn, { backgroundColor: colors.primaryLight }]}
+              >
+                <Text style={[styles.newProjectText, { color: colors.primary }]}>+ New</Text>
+              </TouchableOpacity>
             </View>
-          </Animated.View>
 
-          <NavItem
-            emoji='🗄️'
-            label='Archive'
-            accent='#5F27CD'
-            badge={archivedCount > 0 ? archivedCount : undefined}
-            colors={colors}
-            onPress={() => nav(onArchive)}
-          />
-        </View>
+            {projects.map((project) => (
+              <TouchableOpacity
+                key={project.id}
+                onPress={() => nav(() => onSelectProject(project))}
+                activeOpacity={0.7}
+                style={styles.projectItem}
+              >
+                <View style={[styles.projectDot, { backgroundColor: project.color }]} />
+                <Text style={[styles.projectName, { color: colors.textPrimary }]} numberOfLines={1}>
+                  {project.name}
+                </Text>
+                <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+            ))}
+
+            {projects.length === 0 && (
+              <Text style={[styles.noProjects, { color: colors.textSecondary }]}>
+                No projects yet
+              </Text>
+            )}
+          </View>
+
+          {/* Nav section */}
+          <View style={[styles.section, styles.navSection]}>
+            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+              NAVIGATION
+            </Text>
+
+            <NavItem
+              emoji='⚙️'
+              label='Settings'
+              accent='#F59E0B'
+              colors={colors}
+              onPress={() => nav(onSettings)}
+            />
+
+            <NavItem
+              emoji='🗄️'
+              label='Archive'
+              accent='#5F27CD'
+              badge={archivedCount > 0 ? archivedCount : undefined}
+              colors={colors}
+              onPress={() => nav(onArchive)}
+            />
+          </View>
+        </ScrollView>
 
         <View style={[styles.footer, { borderTopColor: colors.border }]}>
           <Text style={[styles.footerText, { color: colors.textSecondary }]}>
@@ -216,7 +202,6 @@ export default function BurgerMenu({
   );
 }
 
-// ─── NavItem ──────────────────────────────────────────────────────────────────
 function NavItem({
   emoji,
   label,
@@ -254,7 +239,6 @@ function NavItem({
   );
 }
 
-// ─── styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -272,30 +256,62 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.lg,
-    paddingTop: 72,
-    paddingBottom: Spacing.xxl,
-    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    borderBottomWidth: 1,
   },
   brandIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: Radius.xl,
-    backgroundColor: 'rgba(255,255,255,0.25)',
+    width: 72,
+    height: 72,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  brandCheckmark: { fontSize: 32, color: '#fff', fontWeight: '700' },
-  brandName: { fontSize: 24, fontWeight: '700', color: '#fff' },
-  brandTagline: { fontSize: 14, color: 'rgba(255,255,255,0.75)', marginTop: 3 },
+  brandIcon: { width: 72, height: 72 },
+  brandName: { fontSize: 24, fontWeight: '700' },
+  brandTagline: { fontSize: 14, marginTop: 3 },
 
-  nav: { flex: 1, paddingTop: Spacing.xl, paddingHorizontal: Spacing.lg },
+  scrollArea: { flex: 1 },
+
+  section: { paddingHorizontal: Spacing.sm, paddingTop: Spacing.lg },
+  navSection: { paddingTop: Spacing.md },
+
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+    marginLeft: Spacing.xs,
+    marginRight: Spacing.xs,
+  },
   sectionLabel: {
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 1.1,
-    marginBottom: Spacing.md,
-    marginLeft: Spacing.xs,
   },
+  newProjectBtn: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+  },
+  newProjectText: { ...Typography.captionMedium },
+
+  projectItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: Radius.md,
+    marginBottom: 2,
+  },
+  projectDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    flexShrink: 0,
+  },
+  projectName: { flex: 1, ...Typography.bodyMedium },
+  noProjects: { ...Typography.caption, marginLeft: Spacing.sm, marginTop: Spacing.xs },
 
   navItem: {
     flexDirection: 'row',
@@ -326,20 +342,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   badgeText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-
-  settingsPanel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    marginLeft: 54 + Spacing.lg + Spacing.md,
-    marginRight: Spacing.xs,
-  },
-  settingsPanelLabel: { fontSize: 15, fontWeight: '500' },
 
   footer: {
     paddingHorizontal: Spacing.xl,

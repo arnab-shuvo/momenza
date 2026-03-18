@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  Modal, Pressable, Animated, ScrollView, Platform, Switch, Keyboard,
+  Modal, Pressable, Animated, ScrollView, Switch, Keyboard,
 } from 'react-native';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Clipboard from 'expo-clipboard';
+import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { Spacing, Radius, Shadow, Typography } from '../theme';
 import { Task, TaskDate } from '../types/task';
@@ -71,6 +72,8 @@ export default function TaskDetailModal({
   const [activeField,  setActiveField]  = useState<ActiveField>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
 
+  const [copiedField, setCopiedField] = useState<'title' | 'description' | null>(null);
+
   const slideAnim = useRef(new Animated.Value(0)).current;
   const titleRef  = useRef<TextInput>(null);
 
@@ -133,13 +136,14 @@ export default function TaskDetailModal({
   }
 
   const pickerIsTime  = activeField?.endsWith('time') ?? false;
-  const pickerMode    = pickerIsTime ? 'time' : 'date';
-  const pickerDisplay = pickerIsTime ? 'spinner' : 'inline';
   const pickerValue   = activeField?.startsWith('end') ? endDT : startDT;
   const pickerMinDate = activeField === 'end-date' ? startDT : undefined;
 
-  function handleNativeChange(_e: DateTimePickerEvent, sel?: Date) {
-    if (sel) applyField(activeField, sel);
+  // ── copy ─────────────────────────────────────────────────────────────────────
+  async function copyToClipboard(text: string, field: 'title' | 'description') {
+    await Clipboard.setStringAsync(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 1800);
   }
 
   // ── actions ──────────────────────────────────────────────────────────────────
@@ -270,7 +274,26 @@ export default function TaskDetailModal({
               placeholderTextColor={colors.textSecondary}
             />
           ) : (
-            <Text style={[styles.titleText, { color: colors.textPrimary }]}>{task.title}</Text>
+            <View style={styles.copyRow}>
+              <Text
+                style={[styles.titleText, { color: colors.textPrimary, flex: 1 }]}
+                onLongPress={() => copyToClipboard(task.title, 'title')}
+              >
+                {task.title}
+              </Text>
+              <TouchableOpacity
+                onPress={() => copyToClipboard(task.title, 'title')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={[styles.copyBtn, { backgroundColor: copiedField === 'title' ? colors.primaryLight : colors.background, borderColor: colors.border }]}
+                activeOpacity={0.7}
+              >
+                <Feather
+                  name={copiedField === 'title' ? 'check' : 'copy'}
+                  size={14}
+                  color={copiedField === 'title' ? colors.primary : colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
           )}
 
           {/* Description */}
@@ -290,8 +313,27 @@ export default function TaskDetailModal({
             </View>
           ) : task.description ? (
             <View style={[styles.descWrap, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>DESCRIPTION</Text>
-              <Text style={[styles.descText, { color: colors.textPrimary }]}>{task.description}</Text>
+              <View style={styles.descHeader}>
+                <Text style={[styles.sectionLabel, { color: colors.textSecondary, marginBottom: 0 }]}>DESCRIPTION</Text>
+                <TouchableOpacity
+                  onPress={() => copyToClipboard(task.description!, 'description')}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={[styles.copyBtn, { backgroundColor: copiedField === 'description' ? colors.primaryLight : 'transparent', borderColor: 'transparent' }]}
+                  activeOpacity={0.7}
+                >
+                  <Feather
+                    name={copiedField === 'description' ? 'check' : 'copy'}
+                    size={14}
+                    color={copiedField === 'description' ? colors.primary : colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+              <Text
+                style={[styles.descText, { color: colors.textPrimary }]}
+                onLongPress={() => copyToClipboard(task.description!, 'description')}
+              >
+                {task.description}
+              </Text>
             </View>
           ) : null}
 
@@ -450,17 +492,7 @@ export default function TaskDetailModal({
               </TouchableOpacity>
             </LinearGradient>
             <View style={[styles.pickerBody, { backgroundColor: colors.background }]}>
-              {Platform.OS === 'ios' ? (
-                <DateTimePicker
-                  value={pickerValue}
-                  mode={pickerMode}
-                  display={pickerDisplay}
-                  minimumDate={pickerMinDate}
-                  onChange={handleNativeChange}
-                  themeVariant={isDark ? 'dark' : 'light'}
-                  accentColor={colors.primary}
-                />
-              ) : pickerIsTime ? (
+              {pickerIsTime ? (
                 <CustomTimePicker
                   key={String(activeField)}
                   value={pickerValue}
@@ -557,6 +589,26 @@ const styles = StyleSheet.create({
 
   divider: { height: 1, marginVertical: Spacing.xs },
 
+  copyRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  copyBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  descHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
   descWrap: {
     borderRadius: Radius.md,
     borderWidth: 1,

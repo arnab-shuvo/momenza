@@ -9,8 +9,12 @@ export default function EmptyState() {
   return (
     <View style={styles.container}>
       <Text style={styles.emoji}>📝</Text>
-      <Text style={[styles.title, { color: colors.textPrimary }]}>No tasks yet</Text>
-      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Add your first task above to get started</Text>
+      <Text style={[styles.title, { color: colors.textPrimary }]}>
+        No tasks yet
+      </Text>
+      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+        Add your first task to get started
+      </Text>
     </View>
   );
 }

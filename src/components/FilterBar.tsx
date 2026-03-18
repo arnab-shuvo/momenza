@@ -10,7 +10,6 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../context/ThemeContext';
 import { Spacing, Radius, Typography, Shadow } from '../theme';
@@ -133,10 +132,6 @@ export default function FilterBar({ onChange, currentSort, onSortChange }: Filte
       setEndDate(date);
       emit(query, dateMode, startDate, date);
     }
-  }
-
-  function handleIOSChange(_event: DateTimePickerEvent, selected?: Date) {
-    if (selected) applyDate(selected);
   }
 
   function clearDateFilter() {
@@ -341,26 +336,13 @@ export default function FilterBar({ onChange, currentSort, onSortChange }: Filte
             </LinearGradient>
 
             <View style={[styles.pickerBody, { backgroundColor: colors.background }]}>
-              {Platform.OS === 'ios' ? (
-                <DateTimePicker
-                  value={pickerValue}
-                  mode="date"
-                  display="inline"
-                  minimumDate={pickerMin}
-                  onChange={handleIOSChange}
-                  themeVariant={isDark ? 'dark' : 'light'}
-                  accentColor={colors.primary}
-                  style={{ backgroundColor: colors.background }}
-                />
-              ) : (
-                <CustomDatePicker
-                  key={activeField}
-                  value={pickerValue}
-                  minimumDate={pickerMin}
-                  colors={colors}
-                  onChange={applyDate}
-                />
-              )}
+              <CustomDatePicker
+                key={activeField}
+                value={pickerValue}
+                minimumDate={pickerMin}
+                colors={colors}
+                onChange={applyDate}
+              />
             </View>
           </View>
         </View>

@@ -14,7 +14,6 @@ import {
   ScrollView,
   Switch,
 } from 'react-native';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../context/ThemeContext';
 import { Spacing, Radius, Shadow, Typography } from '../theme';
@@ -59,9 +58,10 @@ const DATE_MODES: { key: DateMode; label: string; emoji: string; desc: string }[
 export default function AddTaskModal({ visible, onAdd, onClose }: AddTaskModalProps) {
   const { colors, isDark } = useTheme();
 
-  const [title, setTitle]             = useState('');
-  const [description, setDescription] = useState('');
-  const [dateEnabled, setDateEnabled]  = useState(true);
+  const [title, setTitle]               = useState('');
+  const [description, setDescription]   = useState('');
+  const [descEnabled, setDescEnabled]    = useState(false);
+  const [dateEnabled, setDateEnabled]    = useState(false);
   const [dateMode, setDateMode]     = useState<DateMode>('range');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [startDT, setStartDT]       = useState<Date>(defaultStart);
@@ -69,9 +69,19 @@ export default function AddTaskModal({ visible, onAdd, onClose }: AddTaskModalPr
   const [activeField, setActiveField]   = useState<ActiveField>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
 
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
   const inputRef    = useRef<TextInput>(null);
   const slideAnim   = useRef(new Animated.Value(0)).current;
   const dropAnim    = useRef(new Animated.Value(0)).current;
+
+  // ── keyboard height (Android only) ─────────────────────────────────────────
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const show = Keyboard.addListener('keyboardDidShow', e => setKeyboardHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   // ── lifecycle ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -87,7 +97,8 @@ export default function AddTaskModal({ visible, onAdd, onClose }: AddTaskModalPr
   function reset() {
     setTitle('');
     setDescription('');
-    setDateEnabled(true);
+    setDescEnabled(false);
+    setDateEnabled(false);
     setDateMode('range');
     setDropdownOpen(false);
     setStartDT(defaultStart());
@@ -130,12 +141,6 @@ export default function AddTaskModal({ visible, onAdd, onClose }: AddTaskModalPr
     setActiveField(null);
   }
 
-  // ── picker change (iOS native only) ────────────────────────────────────────
-  function handlePickerChange(_event: DateTimePickerEvent, selected?: Date) {
-    if (!selected) return;
-    applyField(activeField, selected);
-  }
-
   function applyField(field: ActiveField, val: Date) {
     const patch = (prev: Date, isDate: boolean) => {
       const d = new Date(prev);
@@ -151,9 +156,7 @@ export default function AddTaskModal({ visible, onAdd, onClose }: AddTaskModalPr
 
   // Picker config
   const pickerIsTime  = activeField?.endsWith('time') ?? false;
-  const pickerMode    = pickerIsTime ? 'time' : 'date';
-  const pickerDisplay = pickerIsTime ? 'spinner' : 'inline';
-  const pickerValue   = (activeField?.startsWith('end') ? endDT : startDT);
+const pickerValue   = (activeField?.startsWith('end') ? endDT : startDT);
   const pickerMinDate = activeField === 'end-date' ? startDT : undefined;
 
   // ── submit ─────────────────────────────────────────────────────────────────
@@ -184,11 +187,12 @@ export default function AddTaskModal({ visible, onAdd, onClose }: AddTaskModalPr
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        enabled={Platform.OS === 'ios'}
       >
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
 
         <Animated.View
-          style={[styles.sheet, { backgroundColor: colors.surface, transform: [{ translateY }] }, Shadow.md]}
+          style={[styles.sheet, { backgroundColor: colors.surface, transform: [{ translateY }] }, Shadow.md, Platform.OS === 'android' && { marginBottom: keyboardHeight }]}
         >
           {/* Drag handle */}
           <View style={styles.handleRow}>
@@ -238,19 +242,37 @@ export default function AddTaskModal({ visible, onAdd, onClose }: AddTaskModalPr
               />
             </View>
 
-            {/* Description input */}
-            <View style={[styles.descWrap, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Text style={[styles.descLabel, { color: colors.textSecondary }]}>DESCRIPTION</Text>
-              <TextInput
-                style={[styles.descInput, { color: colors.textPrimary }]}
-                placeholder="Add notes or details (optional)…"
-                placeholderTextColor={colors.textSecondary}
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                maxLength={1000}
-                textAlignVertical="top"
-              />
+            {/* Description toggle + input */}
+            <View style={[styles.scheduleCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <View style={styles.scheduleHeader}>
+                <View style={styles.scheduleLabelRow}>
+                  <LinearGradient
+                    colors={['#A78BFA', '#5B5FED']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={styles.scheduleDot}
+                  />
+                  <Text style={[styles.scheduleLabel, { color: colors.textSecondary }]}>DESCRIPTION</Text>
+                </View>
+                <Switch
+                  value={descEnabled}
+                  onValueChange={setDescEnabled}
+                  trackColor={{ false: colors.border, true: '#7B6FFF' }}
+                  thumbColor="#FFFFFF"
+                  ios_backgroundColor={colors.border}
+                />
+              </View>
+              {descEnabled && (
+                <TextInput
+                  style={[styles.descInput, { color: colors.textPrimary, borderColor: colors.border }]}
+                  placeholder="Add notes or details…"
+                  placeholderTextColor={colors.textSecondary}
+                  value={description}
+                  onChangeText={setDescription}
+                  multiline
+                  maxLength={1000}
+                  textAlignVertical="top"
+                />
+              )}
             </View>
 
             {/* ── Schedule section ──────────────────────────────── */}
@@ -436,18 +458,7 @@ export default function AddTaskModal({ visible, onAdd, onClose }: AddTaskModalPr
 
             {/* Picker content */}
             <View style={[styles.pickerCardBody, { backgroundColor: colors.background }]}>
-              {Platform.OS === 'ios' ? (
-                <DateTimePicker
-                  value={pickerValue}
-                  mode={pickerMode}
-                  display={pickerDisplay}
-                  minimumDate={pickerMinDate}
-                  onChange={handlePickerChange}
-                  themeVariant={isDark ? 'dark' : 'light'}
-                  accentColor={colors.primary}
-                  style={[styles.iosPickerNative, { backgroundColor: colors.background }]}
-                />
-              ) : pickerIsTime ? (
+              {pickerIsTime ? (
                 <CustomTimePicker
                   key={String(activeField)}
                   value={pickerValue}
@@ -567,20 +578,15 @@ const styles = StyleSheet.create({
   },
   input: { ...Typography.body, lineHeight: 24 },
 
-  // Description
-  descWrap: {
-    borderRadius: Radius.md,
-    borderWidth: 1.5,
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.sm,
-    paddingBottom: Spacing.sm + 2,
+  descInput: {
+    ...Typography.body,
+    lineHeight: 22,
+    minHeight: 72,
+    borderWidth: 1,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
   },
-  descLabel: {
-    ...Typography.captionMedium,
-    letterSpacing: 0.8,
-    marginBottom: Spacing.xs,
-  },
-  descInput: { ...Typography.body, lineHeight: 22, minHeight: 72 },
 
   // Schedule card
   scheduleCard: {

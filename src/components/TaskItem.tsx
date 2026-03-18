@@ -9,6 +9,8 @@ import {
   Pressable,
   Dimensions,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Task, TaskDate } from '../types/task';
 import { useTheme } from '../context/ThemeContext';
 import { Spacing, Radius, Shadow, Typography } from '../theme';
@@ -37,9 +39,15 @@ interface TaskItemProps {
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
   onPress?: () => void;
+  onLongPress?: () => void;
+  onUncomplete?: (id: string) => void;
   isDragging?: boolean;
   onDragHandleTouch: () => void;
   onDragHandleRelease: () => void;
+  isSelecting?: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
+  isCompleted?: boolean;
 }
 
 // ─── component ────────────────────────────────────────────────────────────────
@@ -49,24 +57,51 @@ export default function TaskItem({
   onArchive,
   onDelete,
   onPress,
+  onLongPress,
+  onUncomplete,
   isDragging = false,
   onDragHandleTouch,
   onDragHandleRelease,
+  isSelecting = false,
+  isSelected = false,
+  onSelect,
+  isCompleted = false,
 }: TaskItemProps) {
   const { colors } = useTheme();
-  const checkScale  = useRef(new Animated.Value(1)).current;
-  const itemOpacity = useRef(new Animated.Value(1)).current;
-  const dropAnim    = useRef(new Animated.Value(0)).current;
-  const menuBtnRef  = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
+  const longPressHandled = useRef(false);
+  const checkScale      = useRef(new Animated.Value(1)).current;
+  const checkFill       = useRef(new Animated.Value(isCompleted ? 1 : 0)).current;
+  const checkMarkScale  = useRef(new Animated.Value(isCompleted ? 1 : 0)).current;
+  const itemOpacity     = useRef(new Animated.Value(1)).current;
+  const dropAnim        = useRef(new Animated.Value(0)).current;
+  const menuBtnRef      = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
 
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPos, setMenuPos]         = useState({ top: 0, right: 0 });
 
+  const checkBorderColor = checkFill.interpolate({
+    inputRange: [0, 1], outputRange: [colors.border, '#00B894'],
+  });
+
   function handleComplete() {
-    Animated.sequence([
-      Animated.spring(checkScale, { toValue: 1.3, useNativeDriver: true, speed: 50, bounciness: 12 }),
-      Animated.spring(checkScale, { toValue: 1,   useNativeDriver: true, speed: 30 }),
-    ]).start(() => onComplete(task.id));
+    if (isCompleted) {
+      // reverse: uncheck animation then restore
+      Animated.parallel([
+        Animated.spring(checkMarkScale, { toValue: 0, useNativeDriver: true, speed: 30, bounciness: 0 }),
+        Animated.timing(checkFill,      { toValue: 0, duration: 180, useNativeDriver: false }),
+      ]).start(() => onUncomplete?.(task.id));
+      return;
+    }
+    Animated.parallel([
+      Animated.sequence([
+        Animated.spring(checkScale, { toValue: 1.35, useNativeDriver: true, speed: 50, bounciness: 14 }),
+        Animated.spring(checkScale, { toValue: 1,    useNativeDriver: true, speed: 30 }),
+      ]),
+      Animated.timing(checkFill,      { toValue: 1, duration: 220, useNativeDriver: false }),
+      Animated.spring(checkMarkScale, { toValue: 1, useNativeDriver: true, bounciness: 16, speed: 18, delay: 80 }),
+    ]).start(() => {
+      setTimeout(() => onComplete(task.id), 260);
+    });
   }
 
   function handleDelete() {
@@ -107,48 +142,99 @@ export default function TaskItem({
         styles.container,
         {
           backgroundColor: colors.surface,
-          borderColor: isDragging ? colors.primary : colors.border,
+          borderColor: isSelected ? colors.primary : isDragging ? colors.primary : colors.border,
           opacity: itemOpacity,
         },
         isDragging ? Shadow.md : Shadow.sm,
+        isSelected && { backgroundColor: colors.primaryLight },
       ]}
     >
-      {/* Drag handle */}
-      <View
-        style={styles.dragHandle}
-        onTouchStart={onDragHandleTouch}
-        onTouchEnd={onDragHandleRelease}
-        onTouchCancel={onDragHandleRelease}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
-      >
-        <View style={styles.dotsGrid}>
-          {[0, 1, 2].map((row) => (
-            <View key={row} style={styles.dotsRow}>
-              <View style={[styles.dot, { backgroundColor: isDragging ? colors.primary : colors.textSecondary }]} />
-              <View style={[styles.dot, { backgroundColor: isDragging ? colors.primary : colors.textSecondary }]} />
-            </View>
-          ))}
+      {/* Drag handle / selection circle */}
+      {isSelecting ? (
+        <TouchableOpacity
+          style={styles.dragHandle}
+          onPress={onSelect}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
+        >
+          <View style={[
+            styles.selectionCircle,
+            { borderColor: isSelected ? colors.primary : colors.border },
+            isSelected && { backgroundColor: colors.primary },
+          ]}>
+            {isSelected && <Text style={styles.selectionCheck}>✓</Text>}
+          </View>
+        </TouchableOpacity>
+      ) : (
+        <View
+          style={styles.dragHandle}
+          onTouchStart={onDragHandleTouch}
+          onTouchEnd={onDragHandleRelease}
+          onTouchCancel={onDragHandleRelease}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
+        >
+          <View style={styles.dotsGrid}>
+            {[0, 1, 2].map((row) => (
+              <View key={row} style={styles.dotsRow}>
+                <View style={[styles.dot, { backgroundColor: isDragging ? colors.primary : colors.textSecondary }]} />
+                <View style={[styles.dot, { backgroundColor: isDragging ? colors.primary : colors.textSecondary }]} />
+              </View>
+            ))}
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Complete checkbox */}
       <TouchableOpacity onPress={handleComplete} activeOpacity={0.7} style={styles.checkArea}>
-        <Animated.View
-          style={[
-            styles.checkbox,
-            { borderColor: colors.border, backgroundColor: colors.surface },
-            { transform: [{ scale: checkScale }] },
-          ]}
-        />
+        {/* Outer: scale — native driver */}
+        <Animated.View style={{ transform: [{ scale: checkScale }] }}>
+          {/* Border color — JS driver */}
+          <Animated.View style={[styles.checkbox, { borderColor: checkBorderColor, backgroundColor: colors.surface }]}>
+            {/* Gradient fill — JS driver opacity */}
+            <Animated.View style={[StyleSheet.absoluteFill, { borderRadius: 3, opacity: checkFill }]}>
+              <LinearGradient
+                colors={['#00C896', '#00B4D8']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+            </Animated.View>
+            {/* Check icon — native driver scale */}
+            <Animated.View style={{ transform: [{ scale: checkMarkScale }], zIndex: 1 }}>
+              <Feather name="check" size={13} color="#fff" strokeWidth={3} />
+            </Animated.View>
+          </Animated.View>
+        </Animated.View>
       </TouchableOpacity>
 
       {/* Title + date badge */}
-      <TouchableOpacity style={styles.titleArea} onPress={onPress} activeOpacity={0.6}>
-        <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={3}>
+      <TouchableOpacity
+        style={styles.titleArea}
+        onPress={() => {
+          if (longPressHandled.current) {
+            longPressHandled.current = false;
+            return;
+          }
+          if (isSelecting) onSelect?.();
+          else onPress?.();
+        }}
+        onLongPress={isSelecting ? undefined : () => {
+          longPressHandled.current = true;
+          onLongPress?.();
+        }}
+        activeOpacity={0.6}
+      >
+        <Text
+          style={[
+            styles.title,
+            { color: isCompleted ? colors.completed : colors.textPrimary },
+            isCompleted && styles.titleStrikethrough,
+          ]}
+          numberOfLines={3}
+        >
           {task.title}
         </Text>
         {task.taskDate && (
-          <View style={[styles.dateBadge, { backgroundColor: colors.primaryLight }]}>
+          <View style={[styles.dateBadge, { backgroundColor: isSelected ? colors.surface : colors.primaryLight }]}>
             <Text style={styles.dateIcon}>📅</Text>
             <Text style={[styles.dateText, { color: colors.primary }]}>
               {formatTaskDate(task.taskDate)}
@@ -157,18 +243,20 @@ export default function TaskItem({
         )}
       </TouchableOpacity>
 
-      {/* ⋮ Action button */}
-      <TouchableOpacity
-        ref={menuBtnRef}
-        onPress={openMenu}
-        activeOpacity={0.7}
-        style={styles.menuArea}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <View style={[styles.menuButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
-          <Text style={[styles.menuDots, { color: colors.textSecondary }]}>⋮</Text>
-        </View>
-      </TouchableOpacity>
+      {/* ⋮ Action button (hidden when selecting) */}
+      {!isSelecting && (
+        <TouchableOpacity
+          ref={menuBtnRef}
+          onPress={openMenu}
+          activeOpacity={0.7}
+          style={styles.menuArea}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <View style={[styles.menuButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <Text style={[styles.menuDots, { color: colors.textSecondary }]}>⋮</Text>
+          </View>
+        </TouchableOpacity>
+      )}
 
       {/* Dropdown modal */}
       <Modal visible={menuVisible} transparent animationType="none" onRequestClose={closeMenu}>
@@ -193,7 +281,7 @@ export default function TaskItem({
             activeOpacity={0.75}
             style={[styles.dropdownItem, { borderBottomColor: colors.border }]}
           >
-            <Text style={styles.dropdownIcon}>📦</Text>
+            <Feather name="archive" size={16} color={colors.textPrimary} />
             <Text style={[styles.dropdownLabel, { color: colors.textPrimary }]}>Archive</Text>
           </TouchableOpacity>
 
@@ -202,7 +290,7 @@ export default function TaskItem({
             activeOpacity={0.75}
             style={styles.dropdownItem}
           >
-            <Text style={styles.dropdownIcon}>🗑</Text>
+            <Feather name="trash-2" size={16} color={colors.danger} />
             <Text style={[styles.dropdownLabel, { color: colors.danger }]}>Delete</Text>
           </TouchableOpacity>
         </Animated.View>
@@ -235,6 +323,17 @@ const styles = StyleSheet.create({
   dotsGrid: { gap: 4 },
   dotsRow:  { flexDirection: 'row', gap: 3 },
   dot: { width: 3, height: 3, borderRadius: 1.5 },
+  selectionCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectionCheck: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', lineHeight: 14 },
+
+  titleStrikethrough: { textDecorationLine: 'line-through' },
 
   // Checkbox
   checkArea: { marginRight: Spacing.sm },
@@ -245,6 +344,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  checkMark: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 15,
   },
 
   // Title
