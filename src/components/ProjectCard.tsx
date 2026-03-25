@@ -9,6 +9,7 @@ import {
   Pressable,
   Dimensions,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { Project } from '../types/project';
 import { useTheme } from '../context/ThemeContext';
 import { Spacing, Radius, Shadow, Typography } from '../theme';
@@ -20,9 +21,14 @@ interface ProjectCardProps {
   taskCount: number;
   dueTodayCount?: number;
   onPress: () => void;
+  onLongPress?: () => void;
   onEdit: (project: Project) => void;
+  onShare: (project: Project) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
+  isSelecting?: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }
 
 export default function ProjectCard({
@@ -30,11 +36,17 @@ export default function ProjectCard({
   taskCount,
   dueTodayCount = 0,
   onPress,
+  onLongPress,
   onEdit,
+  onShare,
   onArchive,
   onDelete,
+  isSelecting = false,
+  isSelected  = false,
+  onSelect,
 }: ProjectCardProps) {
   const { colors } = useTheme();
+  const longPressHandled = useRef(false);
   const menuBtnRef  = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
   const dropAnim    = useRef(new Animated.Value(0)).current;
   const [menuVisible, setMenuVisible] = useState(false);
@@ -63,29 +75,50 @@ export default function ProjectCard({
 
   return (
     <TouchableOpacity
-      style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }, Shadow.sm]}
-      onPress={onPress}
+      style={[
+        styles.card,
+        { backgroundColor: colors.surface, borderColor: isSelected ? colors.primary : colors.border },
+        Shadow.sm,
+        isSelected && { borderWidth: 2 },
+      ]}
+      onPress={() => {
+        if (longPressHandled.current) { longPressHandled.current = false; return; }
+        if (isSelecting) { onSelect?.(); } else { onPress(); }
+      }}
+      onLongPress={() => { longPressHandled.current = true; onLongPress?.(); }}
       activeOpacity={0.75}
     >
       <View style={[styles.colorBar, { backgroundColor: project.color }]} />
 
       <View style={styles.content}>
         <View style={styles.row}>
-          <View style={[styles.colorDot, { backgroundColor: project.color }]} />
+          {isSelecting ? (
+            <View style={[
+              styles.checkbox,
+              { borderColor: isSelected ? colors.primary : colors.border,
+                backgroundColor: isSelected ? colors.primary : 'transparent' },
+            ]}>
+              {isSelected && <Feather name="check" size={12} color="#fff" />}
+            </View>
+          ) : (
+            <View style={[styles.colorDot, { backgroundColor: project.color }]} />
+          )}
           <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={2}>
             {project.name}
           </Text>
-          <TouchableOpacity
-            ref={menuBtnRef}
-            onPress={openMenu}
-            activeOpacity={0.7}
-            style={styles.menuArea}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <View style={[styles.menuButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Text style={[styles.menuDots, { color: colors.textSecondary }]}>⋮</Text>
-            </View>
-          </TouchableOpacity>
+          {!isSelecting && (
+            <TouchableOpacity
+              ref={menuBtnRef}
+              onPress={openMenu}
+              activeOpacity={0.7}
+              style={styles.menuArea}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <View style={[styles.menuButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <Text style={[styles.menuDots, { color: colors.textSecondary }]}>⋮</Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.metaRow}>
@@ -126,6 +159,15 @@ export default function ProjectCard({
           >
             <Text style={styles.dropdownIcon}>✏️</Text>
             <Text style={[styles.dropdownLabel, { color: colors.textPrimary }]}>Edit</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => { closeMenu(); onShare(project); }}
+            activeOpacity={0.75}
+            style={[styles.dropdownItem, { borderBottomColor: colors.border }]}
+          >
+            <Feather name="share-2" size={16} color={colors.textPrimary} style={styles.dropdownFeather} />
+            <Text style={[styles.dropdownLabel, { color: colors.textPrimary }]}>Share</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -178,6 +220,15 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     flexShrink: 0,
   },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
   name: {
     flex: 1,
     ...Typography.bodyMedium,
@@ -227,6 +278,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     borderBottomWidth: 1,
   },
-  dropdownIcon:  { fontSize: 16 },
-  dropdownLabel: { ...Typography.bodyMedium },
+  dropdownIcon:    { fontSize: 16 },
+  dropdownFeather: { width: 16 },
+  dropdownLabel:   { ...Typography.bodyMedium },
 });

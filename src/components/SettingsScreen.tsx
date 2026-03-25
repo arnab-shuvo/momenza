@@ -13,6 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { Spacing, Radius, Typography } from '../theme';
 import { useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 interface SettingsScreenProps {
   visible: boolean;
@@ -21,6 +22,11 @@ interface SettingsScreenProps {
 
 export default function SettingsScreen({ visible, onClose }: SettingsScreenProps) {
   const { colors, isDark, toggleTheme } = useTheme();
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    onClose();
+  }
 
   useEffect(() => {
     if (!visible) return;
@@ -73,6 +79,22 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
             />
           </View>
 
+          {/* Section: Account */}
+          <Text style={[styles.sectionHeader, { color: colors.textPrimary, marginTop: Spacing.xl }]}>
+            Account
+          </Text>
+
+          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <TouchableOpacity
+              style={styles.row}
+              onPress={handleSignOut}
+              activeOpacity={0.7}
+            >
+              <Feather name="log-out" size={18} color={colors.danger} />
+              <Text style={[styles.rowLabel, { color: colors.danger }]}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
+
         </View>
       </SafeAreaView>
     </Modal>
@@ -121,7 +143,7 @@ const styles = StyleSheet.create({
   title: {
     flex: 1,
     textAlign: 'center',
-    fontSize: Typography.lg,
+    fontSize: 18,
     fontWeight: '700',
   },
 
@@ -132,7 +154,7 @@ const styles = StyleSheet.create({
   },
 
   sectionHeader: {
-    fontSize: Typography.xl,
+    fontSize: 20,
     fontWeight: '700',
     marginBottom: Spacing.md,
   },
@@ -151,6 +173,6 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   rowLeft: { flex: 1 },
-  rowLabel: { fontSize: Typography.md, fontWeight: '500' },
-  rowDesc: { fontSize: Typography.sm, marginTop: 2 },
+  rowLabel: { fontSize: 15, fontWeight: '500' },
+  rowDesc: { fontSize: 13, marginTop: 2 },
 });

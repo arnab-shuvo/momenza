@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTasks } from '../hooks/useTasks';
-import { useProjects } from '../hooks/useProjects';
+import { useProjects, QUICK_TASKS_ID } from '../hooks/useProjects';
 import { useTheme } from '../context/ThemeContext';
 import Header from './Header';
 import TaskList from './TaskList';
@@ -23,13 +23,19 @@ import CalendarView from './CalendarView';
 import TaskDetailModal from './TaskDetailModal';
 import CreateProjectModal from './CreateProjectModal';
 import { TaskFilter, SortMode } from '../types/filter';
-import { Task } from '../types/task';
+import { Task, TaskDate } from '../types/task';
 import { Project } from '../types/project';
+import { useSync } from '../hooks/useSync';
+import AuthScreen from './AuthScreen';
+import { supabase } from '../lib/supabase';
+import { setupNotifications, scheduleDailySummary } from '../lib/notifications';
 
 const EMPTY_FILTER: TaskFilter = { query: '', date: null };
 
-export default function AppShell() {
+export default function AppShell({ userId, userEmail }: { userId: string | null; userEmail?: string }) {
   const { colors } = useTheme();
+  const { queueUpsert, queueDelete, syncStatus } = useSync(userId);
+  const sync = { queueUpsert, queueDelete };
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [burgerVisible,    setBurgerVisible]    = useState(false);
   const [archiveVisible,   setArchiveVisible]   = useState(false);
@@ -43,6 +49,13 @@ export default function AppShell() {
   const [scannerVisible,  setScannerVisible]  = useState(false);
   const [createProjectVisible, setCreateProjectVisible] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [calendarDate, setCalendarDate] = useState<Date | undefined>(undefined);
+  const [authVisible, setAuthVisible] = useState(false);
+
+  // Auto-close auth modal on successful sign-in
+  useEffect(() => {
+    if (userId) setAuthVisible(false);
+  }, [userId]);
 
   const {
     tasks,
@@ -61,7 +74,7 @@ export default function AppShell() {
     importTasks,
     archiveManyTasks,
     deleteTasksByProject,
-  } = useTasks();
+  } = useTasks(sync);
 
   const {
     projects,
@@ -72,7 +85,25 @@ export default function AppShell() {
     archiveProject,
     restoreProject,
     deleteProject,
-  } = useProjects();
+    archiveManyProjects,
+    deleteManyProjects,
+    ensureQuickTasksProject,
+  } = useProjects(sync);
+
+  // Request notification permissions once on mount
+  useEffect(() => { setupNotifications(); }, []);
+
+  // Reschedule daily 7am summary whenever active tasks change
+  useEffect(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStart = today.getTime();
+    const todayEnd   = todayStart + 86_400_000 - 1;
+    const count = activeTasks.filter(t =>
+      t.taskDate && t.taskDate.start >= todayStart && t.taskDate.start <= todayEnd
+    ).length;
+    scheduleDailySummary(count);
+  }, [activeTasks]);
 
   // Keep selectedProject in sync if it gets archived/deleted
   useEffect(() => {
@@ -96,7 +127,7 @@ export default function AppShell() {
       if (archiveVisible)       { setArchiveVisible(false);       return true; }
       if (burgerVisible)        { setBurgerVisible(false);        return true; }
       if (selectedProject)      { setSelectedProject(null);       return true; }
-      return false; // default: exit app
+      return false;
     });
     return () => sub.remove();
   }, [selectedTask, addModalVisible, createProjectVisible, scannerVisible, settingsVisible, archiveVisible, burgerVisible, selectedProject]);
@@ -146,7 +177,6 @@ export default function AppShell() {
       await importTasks(incomingTasks, selectedProject?.id);
       return;
     }
-
     const existing = projects.find(p => p.name === projectName && p.status === 'active');
     if (existing) {
       await importTasks(incomingTasks, existing.id);
@@ -156,6 +186,17 @@ export default function AppShell() {
       await importTasks(incomingTasks, newProject.id);
     }
   }, [importTasks, addProject, projects, selectedProject]);
+
+  // Handle adding a task from home screen (with Quick Tasks fallback)
+  const handleAddTaskFromHome = useCallback(async (
+    title: string,
+    taskDate?: TaskDate,
+    description?: string,
+    projectId?: string,
+  ) => {
+    const targetId = projectId ?? await ensureQuickTasksProject();
+    await addTask(title, taskDate, description, targetId);
+  }, [addTask, ensureQuickTasksProject]);
 
   const handleDeleteProject = useCallback(async (id: string) => {
     deleteTasksByProject(id);
@@ -213,18 +254,19 @@ export default function AppShell() {
   }, [projectActiveTasks, filter, sort]);
 
   const calendarProjects = useMemo(
-    () => (selectedProject ? [] : activeProjects),
+    () => selectedProject ? [selectedProject] : activeProjects,
     [activeProjects, selectedProject]
+  );
+
+  const selectedTaskProject = useMemo(
+    () => projects.find(p => p.id === selectedTask?.projectId),
+    [projects, selectedTask]
   );
 
   const isInsideProject = selectedProject !== null;
 
-  function handleFABPress() {
-    if (isInsideProject) {
-      setAddModalVisible(true);
-    } else {
-      setCreateProjectVisible(true);
-    }
+  async function handleSignOut() {
+    await supabase.auth.signOut();
   }
 
   async function handleCreateProject(name: string, color: string) {
@@ -283,7 +325,9 @@ export default function AppShell() {
             <View style={styles.flex}>
               <CalendarView
                 tasks={allTasksForCalendar}
+                projects={calendarProjects}
                 onTaskPress={setSelectedTask}
+                onAddTask={(date) => { setCalendarDate(date); setAddModalVisible(true); }}
               />
             </View>
           )
@@ -293,10 +337,16 @@ export default function AppShell() {
               <HomeScreen
                 projects={activeProjects}
                 tasks={tasks}
+                isAuthenticated={!!userId}
                 onSelectProject={setSelectedProject}
                 onEditProject={openEditProject}
                 onArchiveProject={archiveProject}
                 onDeleteProject={handleDeleteProject}
+                onArchiveManyProjects={archiveManyProjects}
+                onDeleteManyProjects={(ids) => { ids.forEach(id => deleteTasksByProject(id)); deleteManyProjects(ids); }}
+                onSelectingChange={setIsListSelecting}
+                onTaskPress={setSelectedTask}
+                onSignIn={() => setAuthVisible(true)}
               />
             </View>
           ) : (
@@ -305,20 +355,30 @@ export default function AppShell() {
                 tasks={allTasksForCalendar}
                 projects={calendarProjects}
                 onTaskPress={setSelectedTask}
+                onAddTask={(date) => { setCalendarDate(date); setAddModalVisible(true); }}
               />
             </View>
           )
         )}
       </View>
 
-      {!isListSelecting && <FloatingAddButton onPress={handleFABPress} />}
+      {!isListSelecting && (
+        <FloatingAddButton
+          isInsideProject={isInsideProject}
+          onAddProject={() => setCreateProjectVisible(true)}
+          onAddTask={() => setAddModalVisible(true)}
+        />
+      )}
 
       <AddTaskModal
         visible={addModalVisible}
-        onAdd={(title, taskDate, description) =>
-          addTask(title, taskDate, description, selectedProject?.id)
+        projects={isInsideProject ? undefined : activeProjects}
+        initialDate={calendarDate}
+        onAdd={isInsideProject
+          ? (title, taskDate, description) => addTask(title, taskDate, description, selectedProject!.id)
+          : handleAddTaskFromHome
         }
-        onClose={() => setAddModalVisible(false)}
+        onClose={() => { setAddModalVisible(false); setCalendarDate(undefined); }}
       />
 
       <CreateProjectModal
@@ -332,9 +392,14 @@ export default function AppShell() {
         visible={burgerVisible}
         archivedCount={archivedCount}
         projects={activeProjects}
+        isAuthenticated={!!userId}
+        userEmail={userEmail}
+        syncStatus={syncStatus}
         onClose={() => setBurgerVisible(false)}
         onArchive={() => setArchiveVisible(true)}
         onSettings={() => setSettingsVisible(true)}
+        onSignIn={() => setAuthVisible(true)}
+        onSignOut={handleSignOut}
         onSelectProject={(project) => {
           setSelectedProject(project);
           setViewMode('list');
@@ -366,11 +431,16 @@ export default function AppShell() {
         onClose={() => setArchiveVisible(false)}
       />
 
+      <AuthScreen visible={authVisible} onClose={() => setAuthVisible(false)} />
+
       <TaskDetailModal
         task={selectedTask}
         visible={selectedTask !== null}
+        projectName={selectedTaskProject?.name}
+        projectColor={selectedTaskProject?.color}
+        projects={activeProjects}
         onClose={() => setSelectedTask(null)}
-        onSave={(id, title, taskDate, description) => { updateTask(id, title, taskDate, description); setSelectedTask(null); }}
+        onSave={(id, title, taskDate, description, projectId) => { updateTask(id, title, taskDate, description, projectId); setSelectedTask(null); }}
         onComplete={(id) => { completeTask(id); setSelectedTask(null); }}
         onArchive={(id) => { archiveTask(id); setSelectedTask(null); }}
         onDelete={(id) => { deleteTask(id); setSelectedTask(null); }}

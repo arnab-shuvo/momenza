@@ -30,7 +30,8 @@
     },
     "newArchEnabled": false,
     "plugins": [
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

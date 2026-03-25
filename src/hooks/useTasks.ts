@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Task, TaskDate, TaskStatus } from '../types/task';
+import { scheduleTaskReminder, cancelTaskReminder } from '../lib/notifications';
 
 type DBRow = {
   id: string;
@@ -29,7 +30,12 @@ function generateId(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
 }
 
-export function useTasks() {
+type SyncCallbacks = {
+  queueUpsert: (table: 'tasks' | 'projects', record: Record<string, any>) => Promise<void>;
+  queueDelete: (table: 'tasks' | 'projects', id: string) => Promise<void>;
+};
+
+export function useTasks(sync?: SyncCallbacks) {
   const db = useSQLiteContext();
   const [tasks, setTasks] = useState<Task[]>([]);
 
@@ -76,41 +82,58 @@ export function useTasks() {
         resolvedProjectId
       );
       await db.runAsync(
-        `INSERT INTO tasks (id, title, description, status, created_at, task_date, sort_order, project_id)
-         VALUES (?, ?, ?, 'active', ?, ?, 0, ?)`,
-        id, trimmed, desc, now, taskDateStr, resolvedProjectId
+        `INSERT INTO tasks (id, title, description, status, created_at, task_date, sort_order, project_id, updated_at)
+         VALUES (?, ?, ?, 'active', ?, ?, 0, ?, ?)`,
+        id, trimmed, desc, now, taskDateStr, resolvedProjectId, now
       );
     });
-  }, [db]);
+    await sync?.queueUpsert('tasks', { id, title: trimmed, description: desc, status: 'active', created_at: now, task_date: taskDateStr, sort_order: 0, project_id: resolvedProjectId });
+    if (taskDate) scheduleTaskReminder(id, trimmed, taskDate.start);
+  }, [db, sync]);
 
   const completeTask = useCallback(async (id: string) => {
+    const now = Date.now();
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'completed' as const } : t));
-    await db.runAsync(`UPDATE tasks SET status = 'completed' WHERE id = ?`, id);
-  }, [db]);
+    await db.runAsync(`UPDATE tasks SET status = 'completed', updated_at = ? WHERE id = ?`, now, id);
+    const row = await db.getFirstAsync<any>(`SELECT * FROM tasks WHERE id = ?`, id);
+    if (row) await sync?.queueUpsert('tasks', row);
+    cancelTaskReminder(id);
+  }, [db, sync]);
 
   const uncompleteTask = useCallback(async (id: string) => {
+    const now = Date.now();
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'active' as const } : t));
-    await db.runAsync(`UPDATE tasks SET status = 'active' WHERE id = ?`, id);
-  }, [db]);
+    await db.runAsync(`UPDATE tasks SET status = 'active', updated_at = ? WHERE id = ?`, now, id);
+    const row = await db.getFirstAsync<any>(`SELECT * FROM tasks WHERE id = ?`, id);
+    if (row) await sync?.queueUpsert('tasks', row);
+  }, [db, sync]);
 
   const archiveTask = useCallback(async (id: string) => {
+    const now = Date.now();
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'archived' as const } : t));
-    await db.runAsync(`UPDATE tasks SET status = 'archived' WHERE id = ?`, id);
-  }, [db]);
+    await db.runAsync(`UPDATE tasks SET status = 'archived', updated_at = ? WHERE id = ?`, now, id);
+    const row = await db.getFirstAsync<any>(`SELECT * FROM tasks WHERE id = ?`, id);
+    if (row) await sync?.queueUpsert('tasks', row);
+    cancelTaskReminder(id);
+  }, [db, sync]);
 
   const deleteTask = useCallback(async (id: string) => {
     setTasks(prev => prev.filter(t => t.id !== id));
     await db.runAsync(`DELETE FROM tasks WHERE id = ?`, id);
-  }, [db]);
+    await sync?.queueDelete('tasks', id);
+    cancelTaskReminder(id);
+  }, [db, sync]);
 
   const deleteManyTasks = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return;
     setTasks(prev => prev.filter(t => !ids.includes(t.id)));
     const placeholders = ids.map(() => '?').join(',');
     await db.runAsync(`DELETE FROM tasks WHERE id IN (${placeholders})`, ...ids);
-  }, [db]);
+    for (const id of ids) { await sync?.queueDelete('tasks', id); cancelTaskReminder(id); }
+  }, [db, sync]);
 
   const restoreTask = useCallback(async (id: string) => {
+    const now = Date.now();
     const task = tasks.find(t => t.id === id);
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'active' as const } : t));
     await db.withTransactionAsync(async () => {
@@ -120,25 +143,39 @@ export function useTasks() {
           task.projectId
         );
       }
-      await db.runAsync(`UPDATE tasks SET status = 'active', sort_order = 0 WHERE id = ?`, id);
+      await db.runAsync(`UPDATE tasks SET status = 'active', sort_order = 0, updated_at = ? WHERE id = ?`, now, id);
     });
-  }, [db, tasks]);
+    const row = await db.getFirstAsync<any>(`SELECT * FROM tasks WHERE id = ?`, id);
+    if (row) await sync?.queueUpsert('tasks', row);
+  }, [db, tasks, sync]);
 
   const updateTask = useCallback(async (
-    id: string, title: string, taskDate?: TaskDate, description?: string
+    id: string, title: string, taskDate?: TaskDate, description?: string, projectId?: string
   ) => {
+    const now         = Date.now();
     const desc        = description?.trim() || null;
     const taskDateStr = taskDate ? JSON.stringify(taskDate) : null;
     setTasks(prev => prev.map(t =>
       t.id === id
-        ? { ...t, title, taskDate: taskDate ?? undefined, description: desc ?? undefined }
+        ? { ...t, title, taskDate: taskDate ?? undefined, description: desc ?? undefined, ...(projectId ? { projectId } : {}) }
         : t
     ));
-    await db.runAsync(
-      `UPDATE tasks SET title = ?, task_date = ?, description = ? WHERE id = ?`,
-      title, taskDateStr, desc, id
-    );
-  }, [db]);
+    if (projectId) {
+      await db.runAsync(
+        `UPDATE tasks SET title = ?, task_date = ?, description = ?, project_id = ?, updated_at = ? WHERE id = ?`,
+        title, taskDateStr, desc, projectId, now, id
+      );
+    } else {
+      await db.runAsync(
+        `UPDATE tasks SET title = ?, task_date = ?, description = ?, updated_at = ? WHERE id = ?`,
+        title, taskDateStr, desc, now, id
+      );
+    }
+    const row = await db.getFirstAsync<any>(`SELECT * FROM tasks WHERE id = ?`, id);
+    if (row) await sync?.queueUpsert('tasks', row);
+    cancelTaskReminder(id);
+    if (taskDate) scheduleTaskReminder(id, title, taskDate.start);
+  }, [db, sync]);
 
   const importTasks = useCallback(async (
     incoming: { title: string; description?: string; taskDate?: TaskDate }[],
@@ -190,10 +227,16 @@ export function useTasks() {
 
   const archiveManyTasks = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return;
+    const now = Date.now();
     setTasks(prev => prev.map(t => ids.includes(t.id) ? { ...t, status: 'archived' as const } : t));
     const placeholders = ids.map(() => '?').join(',');
-    await db.runAsync(`UPDATE tasks SET status = 'archived' WHERE id IN (${placeholders})`, ...ids);
-  }, [db]);
+    await db.runAsync(`UPDATE tasks SET status = 'archived', updated_at = ? WHERE id IN (${placeholders})`, now, ...ids);
+    for (const id of ids) {
+      const row = await db.getFirstAsync<any>(`SELECT * FROM tasks WHERE id = ?`, id);
+      if (row) await sync?.queueUpsert('tasks', row);
+      cancelTaskReminder(id);
+    }
+  }, [db, sync]);
 
   const deleteTasksByProject = useCallback(async (projectId: string) => {
     setTasks(prev => prev.filter(t => t.projectId !== projectId));

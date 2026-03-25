@@ -13,11 +13,13 @@ import {
   Animated,
   ScrollView,
   Switch,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../context/ThemeContext';
 import { Spacing, Radius, Shadow, Typography } from '../theme';
 import { TaskDate, DateType } from '../types/task';
+import { Project } from '../types/project';
 import { CustomDatePicker, CustomTimePicker } from './CustomPickers';
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -26,8 +28,10 @@ type ActiveField = 'start-date' | 'start-time' | 'end-date' | 'end-time' | null;
 
 interface AddTaskModalProps {
   visible: boolean;
-  onAdd: (title: string, taskDate?: TaskDate, description?: string) => void;
+  onAdd: (title: string, taskDate?: TaskDate, description?: string, projectId?: string) => void;
   onClose: () => void;
+  projects?: Project[];
+  initialDate?: Date;
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -55,7 +59,7 @@ const DATE_MODES: { key: DateMode; label: string; emoji: string; desc: string }[
 ];
 
 // ─── component ────────────────────────────────────────────────────────────────
-export default function AddTaskModal({ visible, onAdd, onClose }: AddTaskModalProps) {
+export default function AddTaskModal({ visible, onAdd, onClose, projects, initialDate }: AddTaskModalProps) {
   const { colors, isDark } = useTheme();
 
   const [title, setTitle]               = useState('');
@@ -69,24 +73,43 @@ export default function AddTaskModal({ visible, onAdd, onClose }: AddTaskModalPr
   const [activeField, setActiveField]   = useState<ActiveField>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
 
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [projectDropOpen, setProjectDropOpen]     = useState(false);
+  const projectDropAnim = useRef(new Animated.Value(0)).current;
 
   const inputRef    = useRef<TextInput>(null);
   const slideAnim   = useRef(new Animated.Value(0)).current;
   const dropAnim    = useRef(new Animated.Value(0)).current;
+  const kbOffset    = useRef(new Animated.Value(0)).current;
 
-  // ── keyboard height (Android only) ─────────────────────────────────────────
+  const SCREEN_H       = Dimensions.get('window').height;
+  const maxSheetHeight = Animated.subtract(SCREEN_H * 0.92, kbOffset);
+
+  // ── keyboard offset ─────────────────────────────────────────────────────────
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const show = Keyboard.addListener('keyboardDidShow', e => setKeyboardHeight(e.endCoordinates.height));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, e =>
+      Animated.timing(kbOffset, { toValue: e.endCoordinates.height, duration: 250, useNativeDriver: false }).start()
+    );
+    const hide = Keyboard.addListener(hideEvt, () =>
+      Animated.timing(kbOffset, { toValue: 0, duration: 200, useNativeDriver: false }).start()
+    );
     return () => { show.remove(); hide.remove(); };
   }, []);
 
   // ── lifecycle ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (visible) {
-      Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
+      if (initialDate) {
+        const d = new Date(initialDate);
+        const def = defaultStart();
+        d.setHours(def.getHours(), 0, 0, 0);
+        setStartDT(d);
+        setDateEnabled(true);
+        setDateMode('single');
+      }
+      Animated.spring(slideAnim, { toValue: 1, useNativeDriver: false, bounciness: 4, speed: 14 }).start();
       setTimeout(() => inputRef.current?.focus(), 150);
     } else {
       slideAnim.setValue(0);
@@ -105,7 +128,27 @@ export default function AddTaskModal({ visible, onAdd, onClose }: AddTaskModalPr
     setEndDT(defaultEnd());
     setActiveField(null);
     setPickerVisible(false);
+    setSelectedProjectId(null);
+    setProjectDropOpen(false);
     dropAnim.setValue(0);
+    projectDropAnim.setValue(0);
+  }
+
+  function toggleProjectDrop() {
+    const opening = !projectDropOpen;
+    setProjectDropOpen(opening);
+    Animated.spring(projectDropAnim, {
+      toValue: opening ? 1 : 0,
+      useNativeDriver: false,
+      bounciness: 2,
+      speed: 18,
+    }).start();
+  }
+
+  function selectProject(id: string | null) {
+    setSelectedProjectId(id);
+    setProjectDropOpen(false);
+    Animated.spring(projectDropAnim, { toValue: 0, useNativeDriver: false, speed: 18, bounciness: 2 }).start();
   }
 
   // ── dropdown ───────────────────────────────────────────────────────────────
@@ -170,29 +213,33 @@ const pickerValue   = (activeField?.startsWith('end') ? endDT : startDT);
         ...(dateMode === 'range' ? { end: endDT.getTime() } : {}),
       };
     }
-    onAdd(title.trim(), taskDate, description);
+    onAdd(title.trim(), taskDate, description, selectedProjectId ?? undefined);
     onClose();
   }
 
   // ── derived ────────────────────────────────────────────────────────────────
-  const canAdd       = title.trim().length > 0;
-  const currentMode  = DATE_MODES.find((m) => m.key === dateMode)!;
-  const translateY   = slideAnim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] });
-  const dropHeight   = dropAnim.interpolate({ inputRange: [0, 1], outputRange: [0, DATE_MODES.length * 64] });
-  const dropOpacity  = dropAnim;
+  const canAdd            = title.trim().length > 0;
+  const currentMode       = DATE_MODES.find((m) => m.key === dateMode)!;
+  const translateY        = slideAnim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] });
+  const dropHeight        = dropAnim.interpolate({ inputRange: [0, 1], outputRange: [0, DATE_MODES.length * 64] });
+  const dropOpacity       = dropAnim;
+  const selectedProject   = projects?.find(p => p.id === selectedProjectId);
+  const projectCount      = (projects?.length ?? 0) + 1; // +1 for "Quick Tasks"
+  const projectDropHeight = projectDropAnim.interpolate({ inputRange: [0, 1], outputRange: [0, projectCount * 52] });
+  const projectDropOpacity = projectDropAnim;
 
   // ─── render ────────────────────────────────────────────────────────────────
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior="padding"
         enabled={Platform.OS === 'ios'}
       >
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
 
         <Animated.View
-          style={[styles.sheet, { backgroundColor: colors.surface, transform: [{ translateY }] }, Shadow.md, Platform.OS === 'android' && { marginBottom: keyboardHeight }]}
+          style={[styles.sheet, { backgroundColor: colors.surface, transform: [{ translateY }] }, Shadow.md, { marginBottom: kbOffset, maxHeight: maxSheetHeight }]}
         >
           {/* Drag handle */}
           <View style={styles.handleRow}>
@@ -241,6 +288,67 @@ const pickerValue   = (activeField?.startsWith('end') ? endDT : startDT);
                 maxLength={200}
               />
             </View>
+
+            {/* Project picker (only when creating from home) */}
+            {projects && projects.length > 0 && (
+              <View style={[styles.scheduleCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <TouchableOpacity
+                  style={[styles.dropdownTrigger, { borderColor: projectDropOpen ? colors.primary : colors.border }]}
+                  onPress={toggleProjectDrop}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={['#A78BFA22', '#5B5FED22']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={styles.dropdownTriggerGrad}
+                  >
+                    <View style={styles.dropdownTriggerLeft}>
+                      <View style={[styles.projectDot, { backgroundColor: selectedProject?.color ?? '#FF9F43' }]} />
+                      <View>
+                        <Text style={[styles.dropdownLabel, { color: colors.textPrimary }]}>
+                          {selectedProject ? selectedProject.name : 'Quick Tasks'}
+                        </Text>
+                        <Text style={[styles.dropdownDesc, { color: colors.textSecondary }]}>
+                          {selectedProject ? 'Assigned project' : 'Auto-created project'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.dropdownChevron, { color: colors.primary }, projectDropOpen && styles.chevronUp]}>›</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <Animated.View style={[styles.dropdownMenu, { height: projectDropHeight, opacity: projectDropOpacity, borderColor: colors.border }]}>
+                  {/* Quick Tasks option */}
+                  <TouchableOpacity
+                    style={[styles.dropdownOption, { borderBottomColor: colors.border }]}
+                    onPress={() => selectProject(null)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.projectDot, { backgroundColor: '#FF9F43' }]} />
+                    <View style={styles.dropdownOptionText}>
+                      <Text style={[styles.dropdownOptionLabel, { color: !selectedProjectId ? colors.primary : colors.textPrimary }]}>Quick Tasks</Text>
+                      <Text style={[styles.dropdownOptionDesc, { color: colors.textSecondary }]}>Auto-created project</Text>
+                    </View>
+                    {!selectedProjectId && <LinearGradient colors={['#A78BFA', '#5B5FED']} style={styles.checkBadge}><Text style={styles.checkMark}>✓</Text></LinearGradient>}
+                  </TouchableOpacity>
+                  {/* Project options */}
+                  {projects.map((p, i) => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={[styles.dropdownOption, { borderBottomColor: colors.border }, i === projects.length - 1 && { borderBottomWidth: 0 }]}
+                      onPress={() => selectProject(p.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.projectDot, { backgroundColor: p.color }]} />
+                      <View style={styles.dropdownOptionText}>
+                        <Text style={[styles.dropdownOptionLabel, { color: selectedProjectId === p.id ? colors.primary : colors.textPrimary }]}>{p.name}</Text>
+                      </View>
+                      {selectedProjectId === p.id && <LinearGradient colors={['#A78BFA', '#5B5FED']} style={styles.checkBadge}><Text style={styles.checkMark}>✓</Text></LinearGradient>}
+                    </TouchableOpacity>
+                  ))}
+                </Animated.View>
+              </View>
+            )}
 
             {/* Description toggle + input */}
             <View style={[styles.scheduleCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -551,7 +659,6 @@ const styles = StyleSheet.create({
   sheet: {
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
-    maxHeight: '92%',
   },
   scrollContent: {
     paddingHorizontal: Spacing.lg,
@@ -640,6 +747,7 @@ const styles = StyleSheet.create({
   dropdownOptionDesc: { ...Typography.caption, marginTop: 1 },
   checkBadge: { width: 22, height: 22, borderRadius: 5, alignItems: 'center', justifyContent: 'center' },
   checkMark: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  projectDot: { width: 12, height: 12, borderRadius: 6 },
 
   // Date range row
   rangeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },

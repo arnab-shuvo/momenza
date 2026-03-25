@@ -32,6 +32,14 @@ interface Props {
   onImport: (tasks: ImportPayload[], projectName?: string, projectColor?: string) => void;
 }
 
+function mapTasks(arr: any[]): ImportPayload[] {
+  return arr.map((item: any) => ({
+    title: item.t,
+    ...(item.d ? { description: item.d } : {}),
+    ...(item.s ? { taskDate: { type: item.dt ?? 'single', start: item.s, ...(item.e ? { end: item.e } : {}) } as TaskDate } : {}),
+  }));
+}
+
 function decodePayload(url: string): QRPayload | null {
   try {
     if (!url.startsWith('momenza://import')) return null;
@@ -40,25 +48,15 @@ function decodePayload(url: string): QRPayload | null {
     const json = decodeURIComponent(Array.from(atob(raw), c => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join(''));
     const parsed = JSON.parse(json);
 
+    // Array of tasks (no project)
     if (Array.isArray(parsed)) {
-      const arr = parsed as { t: string; d?: string; dt?: 'single' | 'range'; s?: number; e?: number }[];
-      return {
-        tasks: arr.map(item => ({
-          title: item.t,
-          ...(item.d ? { description: item.d } : {}),
-          ...(item.s ? { taskDate: { type: item.dt ?? 'single', start: item.s, ...(item.e ? { end: item.e } : {}) } as TaskDate } : {}),
-        })),
-      };
+      return { tasks: mapTasks(parsed) };
     }
 
+    // Single project object
     const obj = parsed as { tasks?: unknown[]; pn?: string; pc?: string };
-    const taskArr = Array.isArray(obj.tasks) ? obj.tasks : [];
     return {
-      tasks: taskArr.map((item: any) => ({
-        title: item.t,
-        ...(item.d ? { description: item.d } : {}),
-        ...(item.s ? { taskDate: { type: item.dt ?? 'single', start: item.s, ...(item.e ? { end: item.e } : {}) } as TaskDate } : {}),
-      })),
+      tasks: mapTasks(Array.isArray(obj.tasks) ? obj.tasks : []),
       ...(obj.pn ? { projectName: obj.pn } : {}),
       ...(obj.pc ? { projectColor: obj.pc } : {}),
     };
@@ -79,6 +77,7 @@ export default function QRScannerModal({ visible, onClose, onImport }: Props) {
     setScanned(true);
 
     const payload = decodePayload(data);
+
     if (!payload || payload.tasks.length === 0) {
       Alert.alert('Invalid QR', 'This QR code was not created by Momenza.', [
         { text: 'Scan Again', onPress: () => setScanned(false) },

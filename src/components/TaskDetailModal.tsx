@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  Modal, Pressable, Animated, ScrollView, Switch, Keyboard,
+  Modal, Pressable, Animated, ScrollView, Switch, Keyboard, Platform, Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
@@ -9,19 +9,8 @@ import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { Spacing, Radius, Shadow, Typography } from '../theme';
 import { Task, TaskDate } from '../types/task';
+import { Project } from '../types/project';
 import { CustomDatePicker, CustomTimePicker } from './CustomPickers';
-
-// ─── shared color palette (mirrors CalendarView) ──────────────────────────────
-const PALETTE = [
-  '#FF6B6B', '#FF9F43', '#1DD1A1', '#48DBFB',
-  '#5F27CD', '#FD79A8', '#6C5CE7', '#00B894',
-  '#E17055', '#74B9FF', '#A29BFE', '#FDCB6E',
-];
-function taskColor(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) { h = (h << 5) - h + id.charCodeAt(i); h |= 0; }
-  return PALETTE[Math.abs(h) % PALETTE.length];
-}
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 type ActiveField = 'start-date' | 'start-time' | 'end-date' | 'end-time' | null;
@@ -47,8 +36,11 @@ function fmtFull(d: Date) {
 interface Props {
   task: Task | null;
   visible: boolean;
+  projectName?: string;
+  projectColor?: string;
+  projects?: Project[];
   onClose: () => void;
-  onSave: (id: string, title: string, taskDate?: TaskDate, description?: string) => void;
+  onSave: (id: string, title: string, taskDate?: TaskDate, description?: string, projectId?: string) => void;
   onComplete: (id: string) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
@@ -57,7 +49,7 @@ interface Props {
 
 // ─── component ────────────────────────────────────────────────────────────────
 export default function TaskDetailModal({
-  task, visible, onClose, onSave, onComplete, onArchive, onDelete, onRestore,
+  task, visible, projectName, projectColor, projects, onClose, onSave, onComplete, onArchive, onDelete, onRestore,
 }: Props) {
   const { colors, isDark } = useTheme();
 
@@ -71,11 +63,31 @@ export default function TaskDetailModal({
   const [endDT,        setEndDT]        = useState<Date>(defaultEnd);
   const [activeField,  setActiveField]  = useState<ActiveField>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [projectDropOpen,   setProjectDropOpen]   = useState(false);
 
   const [copiedField, setCopiedField] = useState<'title' | 'description' | null>(null);
 
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const titleRef  = useRef<TextInput>(null);
+  const slideAnim       = useRef(new Animated.Value(0)).current;
+  const kbOffset        = useRef(new Animated.Value(0)).current;
+  const projectDropAnim = useRef(new Animated.Value(0)).current;
+  const titleRef        = useRef<TextInput>(null);
+
+  const SCREEN_H      = Dimensions.get('window').height;
+  const maxSheetHeight = Animated.subtract(SCREEN_H * 0.92, kbOffset);
+
+  // ── keyboard offset ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, e =>
+      Animated.timing(kbOffset, { toValue: e.endCoordinates.height, duration: 250, useNativeDriver: false }).start()
+    );
+    const hide = Keyboard.addListener(hideEvt, () =>
+      Animated.timing(kbOffset, { toValue: 0, duration: 200, useNativeDriver: false }).start()
+    );
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   // ── sync state when task changes ────────────────────────────────────────────
   useEffect(() => {
@@ -85,6 +97,9 @@ export default function TaskDetailModal({
       setEditDescription(task.description ?? '');
       setActiveField(null);
       setPickerVisible(false);
+      setSelectedProjectId(task.projectId ?? null);
+      setProjectDropOpen(false);
+      projectDropAnim.setValue(0);
       if (task.taskDate) {
         setDateEnabled(true);
         setDateMode(task.taskDate.type === 'range' ? 'range' : 'single');
@@ -96,7 +111,7 @@ export default function TaskDetailModal({
         setStartDT(defaultStart());
         setEndDT(defaultEnd());
       }
-      Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
+      Animated.spring(slideAnim, { toValue: 1, useNativeDriver: false, bounciness: 4, speed: 14 }).start();
     } else {
       slideAnim.setValue(0);
     }
@@ -104,9 +119,27 @@ export default function TaskDetailModal({
 
   if (!task) return null;
 
+  // ── project dropdown helpers ────────────────────────────────────────────────
+  function toggleProjectDrop() {
+    const opening = !projectDropOpen;
+    setProjectDropOpen(opening);
+    Animated.spring(projectDropAnim, { toValue: opening ? 1 : 0, useNativeDriver: false, bounciness: 2, speed: 18 }).start();
+  }
+
+  function selectProject(id: string | null) {
+    setSelectedProjectId(id);
+    setProjectDropOpen(false);
+    Animated.spring(projectDropAnim, { toValue: 0, useNativeDriver: false, speed: 18, bounciness: 2 }).start();
+  }
+
   // ── derived ─────────────────────────────────────────────────────────────────
-  const accent = taskColor(task.id);
+  const accent = projectColor ?? colors.primary;
   const translateY = slideAnim.interpolate({ inputRange: [0, 1], outputRange: [100, 0] });
+  const pickedProject = projects?.find(p => p.id === selectedProjectId);
+  const projectDropHeight = projectDropAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, ((projects?.length ?? 0) + 1) * 52],
+  });
 
   const statusLabel = task.status === 'active' ? 'Active' : task.status === 'completed' ? 'Completed' : 'Deleted';
   const statusColor = task.status === 'active' ? colors.primary : task.status === 'completed' ? colors.success : colors.danger;
@@ -154,7 +187,9 @@ export default function TaskDetailModal({
     setIsEditing(false);
     setPickerVisible(false);
     setActiveField(null);
-    // Revert to original
+    setSelectedProjectId(task.projectId ?? null);
+    setProjectDropOpen(false);
+    projectDropAnim.setValue(0);
     setEditTitle(task.title);
     setEditDescription(task.description ?? '');
     if (task.taskDate) {
@@ -177,7 +212,8 @@ export default function TaskDetailModal({
         ...(dateMode === 'range' ? { end: endDT.getTime() } : {}),
       };
     }
-    onSave(task.id, editTitle.trim(), td, editDescription);
+    const movedProjectId = selectedProjectId && selectedProjectId !== task.projectId ? selectedProjectId : undefined;
+    onSave(task.id, editTitle.trim(), td, editDescription, movedProjectId);
     setIsEditing(false);
   }
 
@@ -221,7 +257,7 @@ export default function TaskDetailModal({
       <Pressable style={styles.backdrop} onPress={onClose} />
 
       <Animated.View
-        style={[styles.sheet, { backgroundColor: colors.surface }, Shadow.md, { transform: [{ translateY }] }]}
+        style={[styles.sheet, { backgroundColor: colors.surface }, Shadow.md, { transform: [{ translateY }], bottom: kbOffset, maxHeight: maxSheetHeight }]}
       >
         {/* Header */}
         <LinearGradient
@@ -255,11 +291,20 @@ export default function TaskDetailModal({
           contentContainerStyle={styles.body}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          style={styles.scrollFlex}
         >
-          {/* Status badge */}
-          <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
-            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-            <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+          {/* Status badge + project name */}
+          <View style={styles.statusRow}>
+            <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
+              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+              <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+            </View>
+            {projectName && (
+              <View style={[styles.projectBadge, { backgroundColor: accent + '22', borderColor: accent + '55' }]}>
+                <View style={[styles.projectDot, { backgroundColor: accent }]} />
+                <Text style={[styles.projectBadgeText, { color: accent }]} numberOfLines={1}>{projectName}</Text>
+              </View>
+            )}
           </View>
 
           {/* Title */}
@@ -336,6 +381,38 @@ export default function TaskDetailModal({
               </Text>
             </View>
           ) : null}
+
+          {/* Project picker (edit mode only) */}
+          {isEditing && projects && projects.length > 0 && (
+            <View style={[styles.projectPickerCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <TouchableOpacity
+                style={[styles.projectPickerTrigger, { borderColor: projectDropOpen ? colors.primary : colors.border }]}
+                onPress={toggleProjectDrop}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.projectPickerDot, { backgroundColor: pickedProject?.color ?? accent }]} />
+                <Text style={[styles.projectPickerLabel, { color: colors.textPrimary }]} numberOfLines={1}>
+                  {pickedProject?.name ?? projectName ?? 'No project'}
+                </Text>
+                <Text style={[styles.projectPickerChevron, { color: colors.textSecondary }, projectDropOpen && styles.chevronUp]}>›</Text>
+              </TouchableOpacity>
+
+              <Animated.View style={[styles.projectDropMenu, { height: projectDropHeight, borderColor: colors.border }]}>
+                {projects.map((p, i) => (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={[styles.projectDropItem, { borderBottomColor: colors.border }, i === projects.length - 1 && { borderBottomWidth: 0 }]}
+                    onPress={() => selectProject(p.id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.projectPickerDot, { backgroundColor: p.color }]} />
+                    <Text style={[styles.projectDropItemText, { color: selectedProjectId === p.id ? colors.primary : colors.textPrimary }]} numberOfLines={1}>{p.name}</Text>
+                    {selectedProjectId === p.id && <Feather name="check" size={14} color={colors.primary} />}
+                  </TouchableOpacity>
+                ))}
+              </Animated.View>
+            </View>
+          )}
 
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
@@ -524,11 +601,10 @@ const styles = StyleSheet.create({
   },
   sheet: {
     position: 'absolute',
-    bottom: 0, left: 0, right: 0,
+    left: 0, right: 0,
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
     overflow: 'hidden',
-    maxHeight: '90%',
   },
 
   // Header
@@ -558,11 +634,19 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
 
+  scrollFlex: { flex: 1 },
+
   // Body
   body: {
     padding: Spacing.lg,
     gap: Spacing.md,
     paddingBottom: Spacing.sm,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
   },
   statusBadge: {
     flexDirection: 'row',
@@ -575,6 +659,18 @@ const styles = StyleSheet.create({
   },
   statusDot: { width: 7, height: 7, borderRadius: 3.5 },
   statusText: { fontSize: 12, fontWeight: '600' },
+  projectBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.sm + 2,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    gap: 5,
+  },
+  projectDot: { width: 7, height: 7, borderRadius: 3.5 },
+  projectBadgeText: { fontSize: 12, fontWeight: '600', maxWidth: 160 },
 
   titleText: { ...Typography.h2, lineHeight: 28 },
   titleInput: {
@@ -679,6 +775,38 @@ const styles = StyleSheet.create({
   dateChipText: { ...Typography.caption, flex: 1 },
 
   meta: { ...Typography.caption, marginTop: Spacing.xs },
+
+  // Project picker
+  projectPickerCard: {
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  projectPickerTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
+    borderBottomWidth: 0,
+  },
+  projectPickerDot: { width: 10, height: 10, borderRadius: 5 },
+  projectPickerLabel: { ...Typography.body, flex: 1 },
+  projectPickerChevron: { fontSize: 20, transform: [{ rotate: '90deg' }] },
+  chevronUp: { transform: [{ rotate: '-90deg' }] },
+  projectDropMenu: {
+    overflow: 'hidden',
+    borderTopWidth: 1,
+  },
+  projectDropItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
+    borderBottomWidth: 1,
+  },
+  projectDropItemText: { ...Typography.body, flex: 1 },
 
   // Footer
   footer: {

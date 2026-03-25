@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import { Feather } from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -12,9 +13,11 @@ import {
   ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 import { Spacing, Radius, Shadow, Typography } from '../theme';
 import { Project } from '../types/project';
+import { SyncStatus } from '../hooks/useSync';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const DRAWER_W = Math.min(300, SCREEN_W * 0.78);
@@ -23,10 +26,14 @@ interface BurgerMenuProps {
   visible: boolean;
   archivedCount: number;
   projects: Project[];
+  isAuthenticated: boolean;
+  userEmail?: string;
+  syncStatus?: SyncStatus;
   onClose: () => void;
   onArchive: () => void;
   onSettings: () => void;
-
+  onSignIn: () => void;
+  onSignOut: () => void;
   onSelectProject: (project: Project) => void;
   onNewProject: () => void;
 }
@@ -35,14 +42,19 @@ export default function BurgerMenu({
   visible,
   archivedCount,
   projects,
+  isAuthenticated,
+  userEmail,
+  syncStatus,
   onClose,
   onArchive,
   onSettings,
-
+  onSignIn,
+  onSignOut,
   onSelectProject,
   onNewProject,
 }: BurgerMenuProps) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const translateX = useRef(new Animated.Value(-DRAWER_W)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
@@ -108,7 +120,7 @@ export default function BurgerMenu({
           style={[
             styles.brand,
             {
-              paddingTop: Spacing.md,
+              paddingTop: insets.top,
               paddingBottom: Spacing.md,
               borderBottomColor: 'rgba(255,255,255,0.15)',
             },
@@ -193,6 +205,39 @@ export default function BurgerMenu({
         </ScrollView>
 
         <View style={[styles.footer, { borderTopColor: colors.border }]}>
+          {isAuthenticated ? (
+            <View style={styles.accountRow}>
+              <View style={[styles.accountAvatar, { backgroundColor: colors.primaryLight }]}>
+                <Text style={[styles.accountAvatarText, { color: colors.primary }]}>
+                  {userEmail?.[0]?.toUpperCase() ?? '?'}
+                </Text>
+              </View>
+              <View style={styles.accountInfo}>
+                <Text style={[styles.accountEmail, { color: colors.textPrimary }]} numberOfLines={1}>
+                  {userEmail}
+                </Text>
+                <Text style={[styles.accountStatus, { color: syncStatus === 'syncing' ? colors.textSecondary : colors.success }]}>
+                  {syncStatus === 'syncing' ? '↑ Syncing…' : '✓ All synced'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => nav(onSignOut)}
+                style={[styles.signOutBtn, { backgroundColor: colors.dangerLight }]}
+                activeOpacity={0.7}
+              >
+                <Feather name="log-out" size={16} color={colors.danger} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => nav(onSignIn)}
+              style={[styles.signInBtn, { backgroundColor: colors.primaryLight }]}
+              activeOpacity={0.8}
+            >
+              <Feather name="log-in" size={16} color={colors.primary} />
+              <Text style={[styles.signInBtnText, { color: colors.primary }]}>Sign in to sync</Text>
+            </TouchableOpacity>
+          )}
           <Text style={[styles.footerText, { color: colors.textSecondary }]}>
             Momenza v1.0
           </Text>
@@ -347,6 +392,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.lg,
     borderTopWidth: 1,
+    gap: Spacing.sm,
   },
   footerText: { fontSize: 13 },
+
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  accountAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  accountAvatarText: { fontSize: 16, fontWeight: '700' },
+  accountInfo: { flex: 1, minWidth: 0 },
+  accountEmail: { fontSize: 13, fontWeight: '600' },
+  accountStatus: { fontSize: 12, marginTop: 1 },
+  signOutBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+
+  signInBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm + 2,
+    borderRadius: Radius.full,
+  },
+  signInBtnText: { fontSize: 14, fontWeight: '600' },
 });
