@@ -34,7 +34,7 @@ const EMPTY_FILTER: TaskFilter = { query: '', date: null };
 
 export default function AppShell({ userId, userEmail }: { userId: string | null; userEmail?: string }) {
   const { colors } = useTheme();
-  const { queueUpsert, queueDelete, syncStatus } = useSync(userId);
+  const { queueUpsert, queueDelete, syncStatus, pullVersion } = useSync(userId);
   const sync = { queueUpsert, queueDelete };
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [burgerVisible,    setBurgerVisible]    = useState(false);
@@ -74,7 +74,7 @@ export default function AppShell({ userId, userEmail }: { userId: string | null;
     importTasks,
     archiveManyTasks,
     deleteTasksByProject,
-  } = useTasks(sync);
+  } = useTasks(sync, pullVersion);
 
   const {
     projects,
@@ -88,7 +88,7 @@ export default function AppShell({ userId, userEmail }: { userId: string | null;
     archiveManyProjects,
     deleteManyProjects,
     ensureQuickTasksProject,
-  } = useProjects(sync);
+  } = useProjects(sync, pullVersion);
 
   // Request notification permissions once on mount
   useEffect(() => { setupNotifications(); }, []);
@@ -360,15 +360,14 @@ export default function AppShell({ userId, userEmail }: { userId: string | null;
             </View>
           )
         )}
+        {!isListSelecting && (
+          <FloatingAddButton
+            isInsideProject={isInsideProject}
+            onAddProject={() => setCreateProjectVisible(true)}
+            onAddTask={() => setAddModalVisible(true)}
+          />
+        )}
       </View>
-
-      {!isListSelecting && (
-        <FloatingAddButton
-          isInsideProject={isInsideProject}
-          onAddProject={() => setCreateProjectVisible(true)}
-          onAddTask={() => setAddModalVisible(true)}
-        />
-      )}
 
       <AddTaskModal
         visible={addModalVisible}

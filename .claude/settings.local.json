@@ -31,7 +31,8 @@
       "Bash(node -e \"require\\(''qrcode''\\)\")",
       "Bash(node -e \":*)",
       "Bash(node -e \"require\\(''qrcode''\\); console.log\\(''qrcode available''\\)\")",
-      "Bash(grep -v \"ExperimentalWarning\\\\|CommonJS\\\\|require\\(\\)\\\\|Use \\\\`node\")"
+      "Bash(grep -v \"ExperimentalWarning\\\\|CommonJS\\\\|require\\(\\)\\\\|Use \\\\`node\")",
+      "Bash(open /Users/arnabdhar/TaskManager/qrcodes/momenza-qrcodes.html)"
     ]
   }
 }

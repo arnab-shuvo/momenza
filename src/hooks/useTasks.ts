@@ -35,7 +35,7 @@ type SyncCallbacks = {
   queueDelete: (table: 'tasks' | 'projects', id: string) => Promise<void>;
 };
 
-export function useTasks(sync?: SyncCallbacks) {
+export function useTasks(sync?: SyncCallbacks, pullVersion?: number) {
   const db = useSQLiteContext();
   const [tasks, setTasks] = useState<Task[]>([]);
 
@@ -46,7 +46,7 @@ export function useTasks(sync?: SyncCallbacks) {
       );
       setTasks(rows.map(rowToTask));
     })();
-  }, []);
+  }, [pullVersion]);
 
   const activeTasks   = useMemo(() => tasks.filter(t => t.status === 'active'),  [tasks]);
   const archivedTasks = useMemo(() => tasks.filter(t => t.status !== 'active'),  [tasks]);

@@ -25,6 +25,7 @@ export function useSync(userId: string | null) {
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFlushing = useRef(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const [pullVersion, setPullVersion] = useState(0);
 
   // Pull on sign-in
   useEffect(() => {
@@ -195,11 +196,12 @@ export function useSync(userId: string | null) {
         String(now),
       );
       setSyncStatus('synced');
+      setPullVersion(v => v + 1);
     } catch (e) {
       console.warn('Sync pull failed:', e);
       setSyncStatus('idle');
     }
   }, [db, userId, flush]);
 
-  return { queueUpsert, queueDelete, flush, syncStatus };
+  return { queueUpsert, queueDelete, flush, syncStatus, pullVersion };
 }

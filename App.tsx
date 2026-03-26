@@ -2,10 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import AppShell from './src/components/AppShell';
+import OnboardingScreen from './src/components/OnboardingScreen';
 import { supabase } from './src/lib/supabase';
 import type { Session } from '@supabase/supabase-js';
+
+const ONBOARDING_KEY = 'onboarding_done';
 
 async function initDB(db: SQLiteDatabase) {
   await db.execAsync(`
@@ -65,15 +69,20 @@ function Root() {
   const { isDark } = useTheme();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    async function init() {
+      const [{ data: { session } }, seen] = await Promise.all([
+        supabase.auth.getSession(),
+        AsyncStorage.getItem(ONBOARDING_KEY),
+      ]);
       setSession(session);
+      setOnboardingDone(seen === 'true');
       setLoading(false);
-    });
+    }
+    init();
 
-    // Listen for auth changes (sign in / sign out)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
@@ -81,7 +90,16 @@ function Root() {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (loading) return null;
+  async function handleOnboardingDone() {
+    await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+    setOnboardingDone(true);
+  }
+
+  if (loading || onboardingDone === null) return null;
+
+  if (!onboardingDone) {
+    return <OnboardingScreen onDone={handleOnboardingDone} />;
+  }
 
   return (
     <>

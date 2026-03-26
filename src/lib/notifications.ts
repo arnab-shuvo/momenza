@@ -13,33 +13,38 @@ Notifications.setNotificationHandler({
 });
 
 export async function setupNotifications(): Promise<boolean> {
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'Momenza',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-    });
+  try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'Momenza',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+      });
+    }
+    const { status } = await Notifications.requestPermissionsAsync();
+    return status === 'granted';
+  } catch {
+    return false;
   }
-  const { status } = await Notifications.requestPermissionsAsync();
-  return status === 'granted';
 }
 
 export async function scheduleDailySummary(taskCount: number): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(DAILY_SUMMARY_ID);
-  if (taskCount === 0) return;
-
-  await Notifications.scheduleNotificationAsync({
-    identifier: DAILY_SUMMARY_ID,
-    content: {
-      title: 'Good morning! ☀️',
-      body: `You have ${taskCount} task${taskCount === 1 ? '' : 's'} due today`,
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour: 7,
-      minute: 0,
-    },
-  });
+  try {
+    await Notifications.cancelScheduledNotificationAsync(DAILY_SUMMARY_ID);
+    if (taskCount === 0) return;
+    await Notifications.scheduleNotificationAsync({
+      identifier: DAILY_SUMMARY_ID,
+      content: {
+        title: 'Good morning! ☀️',
+        body: `You have ${taskCount} task${taskCount === 1 ? '' : 's'} due today`,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: 7,
+        minute: 0,
+      },
+    });
+  } catch {}
 }
 
 export async function scheduleTaskReminder(
@@ -47,22 +52,25 @@ export async function scheduleTaskReminder(
   title: string,
   dueTimestamp: number,
 ): Promise<void> {
-  const triggerTime = dueTimestamp - 60 * 60 * 1000; // 1 hour before
-  if (triggerTime <= Date.now()) return;
-
-  await Notifications.scheduleNotificationAsync({
-    identifier: TASK_PREFIX + taskId,
-    content: {
-      title: '⏰ Task due soon',
-      body: `"${title}" is due in 1 hour`,
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: new Date(triggerTime),
-    },
-  });
+  try {
+    const triggerTime = dueTimestamp - 60 * 60 * 1000; // 1 hour before
+    if (triggerTime <= Date.now()) return;
+    await Notifications.scheduleNotificationAsync({
+      identifier: TASK_PREFIX + taskId,
+      content: {
+        title: '⏰ Task due soon',
+        body: `"${title}" is due in 1 hour`,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: new Date(triggerTime),
+      },
+    });
+  } catch {}
 }
 
 export async function cancelTaskReminder(taskId: string): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(TASK_PREFIX + taskId);
+  try {
+    await Notifications.cancelScheduledNotificationAsync(TASK_PREFIX + taskId);
+  } catch {}
 }

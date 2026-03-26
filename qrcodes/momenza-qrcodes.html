@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Momenza QR Codes</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f4f4f8;
+      padding: 40px 20px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 28px;
+      color: #1a1a2e;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 40px;
+    }
+    .grid {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 32px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 28px 24px;
+      width: 300px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .project-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+    }
+    .dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .project-name {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+    .qr-wrap {
+      padding: 12px;
+      border: 2px solid #f0f0f5;
+      border-radius: 12px;
+    }
+    .tasks {
+      width: 100%;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .tasks li {
+      font-size: 13px;
+      color: #444;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    .tasks li .bullet { flex-shrink: 0; margin-top: 1px; }
+    .today-badge {
+      display: inline-block;
+      background: #fff0f0;
+      color: #e05252;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 20px;
+      margin-left: 4px;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>Momenza QR Codes</h1>
+  <p class="subtitle">Scan with the Momenza app to import projects and tasks</p>
+
+  <div class="grid">
+
+    <!-- Project 1: Work Sprint -->
+    <div class="card">
+      <div class="project-header">
+        <div class="dot" style="background:#6C5CE7"></div>
+        <span class="project-name">Work Sprint</span>
+      </div>
+      <div class="qr-wrap" id="qr1"></div>
+      <ul class="tasks">
+        <li><span class="bullet">○</span><span>Review Q1 performance report <span class="today-badge">due today</span></span></li>
+        <li><span class="bullet">○</span><span>Update project roadmap for Q2</span></li>
+        <li><span class="bullet">○</span><span>Send weekly standup notes <span class="today-badge">due today</span></span></li>
+        <li><span class="bullet">○</span><span>Fix login bug on staging</span></li>
+        <li><span class="bullet">○</span><span>Schedule team retrospective</span></li>
+      </ul>
+    </div>
+
+    <!-- Project 2: Home Renovation -->
+    <div class="card">
+      <div class="project-header">
+        <div class="dot" style="background:#00B894"></div>
+        <span class="project-name">Home Renovation</span>
+      </div>
+      <div class="qr-wrap" id="qr2"></div>
+      <ul class="tasks">
+        <li><span class="bullet">○</span><span>Measure living room dimensions</span></li>
+        <li><span class="bullet">○</span><span>Call contractor for quote <span class="today-badge">due today</span></span></li>
+        <li><span class="bullet">○</span><span>Order bathroom tiles</span></li>
+        <li><span class="bullet">○</span><span>Research paint colors</span></li>
+        <li><span class="bullet">○</span><span>Submit permit application <span class="today-badge">due today</span></span></li>
+      </ul>
+    </div>
+
+    <!-- Project 3: Health & Fitness -->
+    <div class="card">
+      <div class="project-header">
+        <div class="dot" style="background:#E17055"></div>
+        <span class="project-name">Health &amp; Fitness</span>
+      </div>
+      <div class="qr-wrap" id="qr3"></div>
+      <ul class="tasks">
+        <li><span class="bullet">○</span><span>Morning run - 5km <span class="today-badge">due today</span></span></li>
+        <li><span class="bullet">○</span><span>Meal prep for the week</span></li>
+        <li><span class="bullet">○</span><span>Book physio appointment</span></li>
+        <li><span class="bullet">○</span><span>Log yesterday calories</span></li>
+        <li><span class="bullet">○</span><span>Research new workout plan</span></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <script>
+    const projects = [
+      {
+        id: 'qr1',
+        encoded: 'eyJwbiI6IldvcmsgU3ByaW50IiwicGMiOiIjNkM1Q0U3IiwidGFza3MiOlt7InQiOiJSZXZpZXcgUTEgcGVyZm9ybWFuY2UgcmVwb3J0IiwiZHQiOiJzaW5nbGUiLCJzIjoxNzc0NDI5MjAwMDAwfSx7InQiOiJVcGRhdGUgcHJvamVjdCByb2FkbWFwIGZvciBRMiIsImR0Ijoic2luZ2xlIiwicyI6MTc3NDUxOTIwMDAwMH0seyJ0IjoiU2VuZCB3ZWVrbHkgc3RhbmR1cCBub3RlcyIsImR0Ijoic2luZ2xlIiwicyI6MTc3NDQ0NzIwMDAwMH0seyJ0IjoiRml4IGxvZ2luIGJ1ZyBvbiBzdGFnaW5nIiwiZHQiOiJzaW5nbGUiLCJzIjoxNzc1MDMwNDAwMDAwfSx7InQiOiJTY2hlZHVsZSB0ZWFtIHJldHJvc3BlY3RpdmUifV19'
+      },
+      {
+        id: 'qr2',
+        encoded: 'eyJwbiI6IkhvbWUgUmVub3ZhdGlvbiIsInBjIjoiIzAwQjg5NCIsInRhc2tzIjpbeyJ0IjoiTWVhc3VyZSBsaXZpbmcgcm9vbSBkaW1lbnNpb25zIiwiZHQiOiJzaW5nbGUiLCJzIjoxNzc0NTE1NjAwMDAwfSx7InQiOiJDYWxsIGNvbnRyYWN0b3IgZm9yIHF1b3RlIiwiZHQiOiJzaW5nbGUiLCJzIjoxNzc0NDM2NDAwMDAwfSx7InQiOiJPcmRlciBiYXRocm9vbSB0aWxlcyIsImR0Ijoic2luZ2xlIiwicyI6MTc3NTAzMDQwMDAwMH0seyJ0IjoiUmVzZWFyY2ggcGFpbnQgY29sb3JzIn0seyJ0IjoiU3VibWl0IHBlcm1pdCBhcHBsaWNhdGlvbiIsImR0Ijoic2luZ2xlIiwicyI6MTc3NDQ1NDQwMDAwMH1dfQ=='
+      },
+      {
+        id: 'qr3',
+        encoded: 'eyJwbiI6IkhlYWx0aCAmIEZpdG5lc3MiLCJwYyI6IiNFMTcwNTUiLCJ0YXNrcyI6W3sidCI6Ik1vcm5pbmcgcnVuIC0gNWttIiwiZHQiOiJzaW5nbGUiLCJzIjoxNzc0NDIyMDAwMDAwfSx7InQiOiJNZWFsIHByZXAgZm9yIHRoZSB3ZWVrIiwiZHQiOiJzaW5nbGUiLCJzIjoxNzc0NTE5MjAwMDAwfSx7InQiOiJCb29rIHBoeXNpbyBhcHBvaW50bWVudCIsImR0Ijoic2luZ2xlIiwicyI6MTc3NTAzMDQwMDAwMH0seyJ0IjoiTG9nIHllc3RlcmRheSBjYWxvcmllcyJ9LHsidCI6IlJlc2VhcmNoIG5ldyB3b3Jrb3V0IHBsYW4ifV19'
+      }
+    ];
+
+    projects.forEach(({ id, encoded }) => {
+      new QRCode(document.getElementById(id), {
+        text: 'momenza://import?d=' + encoded,
+        width: 220,
+        height: 220,
+        colorDark: '#1a1a2e',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+    });
+  </script>
+</body>
+</html>

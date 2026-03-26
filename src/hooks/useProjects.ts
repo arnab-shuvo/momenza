@@ -33,7 +33,7 @@ type SyncCallbacks = {
   queueDelete: (table: 'tasks' | 'projects', id: string) => Promise<void>;
 };
 
-export function useProjects(sync?: SyncCallbacks) {
+export function useProjects(sync?: SyncCallbacks, pullVersion?: number) {
   const db = useSQLiteContext();
   const [projects, setProjects] = useState<Project[]>([]);
 
@@ -44,7 +44,7 @@ export function useProjects(sync?: SyncCallbacks) {
       );
       setProjects(rows.map(rowToProject));
     })();
-  }, []);
+  }, [pullVersion]);
 
   const addProject = useCallback(async (name: string, color: string): Promise<Project> => {
     const id  = generateId();
